@@ -525,10 +525,11 @@ for (var i = 0; i < RING_COUNT; i++) {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
+var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 var keys = {};
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
-  if (e.code === "Space") e.preventDefault();
+  if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
 });
 window.addEventListener("keyup", function (e) {
   keys[e.code] = false;
@@ -673,9 +674,13 @@ function updateFlight(dt) {
   var vertSpeed = 0;
 
   if (grounded) {
-    // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed
+    // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed.
+    // The boost control (Space / boost button) also throttles up on the ground -- it's the
+    // one control every input scheme (keyboard, joystick, mobile boost button) shares, and the
+    // boost button's "up arrow" look makes it the natural thing to hold for takeoff on touch.
+    var throttleUp = throttlePitchInput > 0 || wantsBoost;
     yaw += yawInput * (TURN_RATE_BASE * 0.5) * dt;
-    var accel = throttlePitchInput > 0 ? stats.groundAccel : throttlePitchInput < 0 ? -stats.groundAccel * 1.4 : -4;
+    var accel = throttleUp ? stats.groundAccel : throttlePitchInput < 0 ? -stats.groundAccel * 1.4 : -4;
     speed = Math.max(0, Math.min(stats.boostSpeed, speed + accel * dt));
     pitch = 0;
     roll = 0;
@@ -686,7 +691,7 @@ function updateFlight(dt) {
     plane.position.addScaledVector(forwardVec, speed * dt);
     plane.position.y = GROUND_Y;
 
-    if (speed >= stats.takeoffSpeed && throttlePitchInput > 0) {
+    if (speed >= stats.takeoffSpeed && throttleUp) {
       grounded = false;
       airborneElapsed = 0;
       pitch = 0.18;
