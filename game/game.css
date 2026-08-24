@@ -1,0 +1,228 @@
+/* Sky Runner 3D — game-only styles. Self-contained: safe to restyle without touching the site CSS. */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #05070c;
+  overflow: hidden;
+  touch-action: none;
+  font-family: "Courier New", monospace;
+}
+
+#game-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#three-container {
+  position: absolute;
+  inset: 0;
+}
+
+#three-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#hud {
+  position: absolute;
+  top: 0.6rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0.9rem;
+  color: #e6ecff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.05rem;
+}
+
+.hud-row-sub {
+  font-size: 0.75rem;
+  color: #93a0c2;
+  text-shadow: none;
+  gap: 1rem;
+}
+
+#toast {
+  position: absolute;
+  top: 4.2rem;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #ffd400;
+  text-shadow: 0 0 12px rgba(255, 212, 0, 0.7);
+  font-size: 1.2rem;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+#toast.show {
+  opacity: 1;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  text-align: center;
+  background: rgba(5, 7, 12, 0.72);
+  color: #e6ecff;
+  padding: 1rem;
+}
+
+#overlay h1 {
+  margin: 0;
+  font-size: clamp(1.2rem, 5vw, 1.8rem);
+  color: #00f0ff;
+  text-shadow: 0 0 16px rgba(0, 240, 255, 0.6);
+  letter-spacing: 2px;
+}
+
+#overlay p {
+  margin: 0;
+  max-width: 24rem;
+  color: #93a0c2;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+#overlay p b {
+  color: #e6ecff;
+}
+
+#loading-msg {
+  color: #00f0ff;
+  font-size: 0.95rem;
+}
+
+#plane-select {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 26rem;
+}
+
+.plane-card {
+  font-family: inherit;
+  color: #e6ecff;
+  background: rgba(19, 26, 42, 0.9);
+  border: 2px solid #24304a;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  min-width: 8.5rem;
+}
+
+.plane-card .plane-name {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 0.3rem;
+}
+
+.plane-card .plane-stats {
+  display: block;
+  font-size: 0.7rem;
+  color: #93a0c2;
+  line-height: 1.4;
+}
+
+.plane-card.selected {
+  border-color: #00f0ff;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+}
+
+#start-btn {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.6rem;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  color: #04121a;
+  background: linear-gradient(135deg, #00f0ff, #00b7c7);
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.5);
+}
+
+#start-btn:active {
+  transform: translateY(1px);
+}
+
+/* ---------- Touch controls ---------- */
+
+#joystick-base {
+  position: absolute;
+  left: 1.1rem;
+  bottom: 1.1rem;
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 240, 255, 0.35);
+  background: rgba(0, 240, 255, 0.08);
+  display: none;
+  touch-action: none;
+}
+
+#joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin-left: -1.3rem;
+  margin-top: -1.3rem;
+  border-radius: 50%;
+  background: rgba(0, 240, 255, 0.35);
+  border: 2px solid rgba(0, 240, 255, 0.8);
+}
+
+#boost-btn {
+  position: absolute;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  width: 3.8rem;
+  height: 3.8rem;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 46, 136, 0.5);
+  background: rgba(255, 46, 136, 0.15);
+  color: #ff2e88;
+  font-size: 1.4rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  #joystick-base {
+    display: block;
+  }
+  #boost-btn {
+    display: flex;
+  }
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Sky Runner 3D — NYC</title>
+  <link rel="stylesheet" href="game.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="game-root">
+    <div id="three-container"></div>
+
+    <div id="hud">
+      <div class="hud-row">
+        <span id="score">Score: 0</span>
+        <span id="best">Best: 0</span>
+      </div>
+      <div class="hud-row hud-row-sub">
+        <span id="status">ON RUNWAY</span>
+        <span id="alt">ALT 0</span>
+        <span id="spd">SPD 0</span>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div id="overlay">
+      <h1>SKY RUNNER 3D</h1>
+      <p id="loading-msg">Loading real NYC map data&hellip;</p>
+
+      <div id="ready-panel" style="display:none">
+        <p id="overlay-msg">
+          On the runway: hold <kbd>&uarr;</kbd>/<kbd>W</kbd> to throttle up, keep holding to lift off.<br />
+          Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd>, hold <kbd>Space</kbd> to boost.<br />
+          Fly through the rings for points. Line up with the runway, ease off, and glide in level to land!
+        </p>
+        <div id="plane-select"></div>
+        <button id="start-btn">▶ Start</button>
+      </div>
+    </div>
+
+    <div id="joystick-base">
+      <div id="joystick-knob"></div>
+    </div>
+    <button id="boost-btn" aria-label="Boost">▲</button>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

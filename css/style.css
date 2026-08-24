@@ -1,0 +1,194 @@
+/* Sky Runner — site styles (dark arcade theme)
+   Game visuals live separately in game/game.css — this file only styles the landing page. */
+
+:root {
+  --bg: #0a0e17;
+  --bg-alt: #10152280;
+  --panel: #131a2a;
+  --border: #24304a;
+  --text: #e6ecff;
+  --text-dim: #93a0c2;
+  --accent: #00f0ff;
+  --accent-2: #ff2e88;
+  --glow: 0 0 12px rgba(0, 240, 255, 0.6);
+  --font-arcade: "Press Start 2P", "Courier New", monospace;
+  --font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 50% -10%, #16203a 0%, var(--bg) 55%) fixed;
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---------- Header ---------- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: rgba(10, 14, 23, 0.85);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  font-family: var(--font-arcade);
+  font-size: 0.9rem;
+  color: var(--accent);
+  text-decoration: none;
+  text-shadow: var(--glow);
+  letter-spacing: 1px;
+}
+
+.site-nav {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.site-nav a {
+  text-decoration: none;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  transition: color 0.15s ease;
+}
+
+.site-nav a:hover {
+  color: var(--accent);
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  text-align: center;
+  padding: 4.5rem 1.5rem 3.5rem;
+}
+
+.hero h1 {
+  font-family: var(--font-arcade);
+  font-size: clamp(1.6rem, 6vw, 3rem);
+  margin: 0 0 1.25rem;
+  color: var(--text);
+  text-shadow: 0 0 18px rgba(0, 240, 255, 0.45), 0 0 40px rgba(255, 46, 136, 0.25);
+  letter-spacing: 2px;
+}
+
+.tagline {
+  max-width: 42rem;
+  margin: 0 auto 2rem;
+  color: var(--text-dim);
+  font-size: clamp(0.95rem, 2.2vw, 1.1rem);
+}
+
+.btn-play {
+  display: inline-block;
+  padding: 0.9rem 2.2rem;
+  font-family: var(--font-arcade);
+  font-size: 0.85rem;
+  color: #04121a;
+  background: linear-gradient(135deg, var(--accent), #00b7c7);
+  border-radius: 6px;
+  text-decoration: none;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-play:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgba(0, 240, 255, 0.7);
+}
+
+/* ---------- Game embed ---------- */
+
+.game-section {
+  padding: 0 1rem 3rem;
+  display: flex;
+  justify-content: center;
+}
+
+.game-frame-wrap {
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 16 / 10;
+  background: #000;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.08), 0 20px 60px rgba(0, 0, 0, 0.5), var(--glow);
+}
+
+.game-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .game-frame-wrap {
+    aspect-ratio: 3 / 4;
+    border-radius: 6px;
+  }
+}
+
+/* ---------- Info sections ---------- */
+
+.info-section {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.info-section h2 {
+  font-family: var(--font-arcade);
+  font-size: 1.1rem;
+  color: var(--accent-2);
+  margin-bottom: 1rem;
+}
+
+.placeholder {
+  color: var(--text-dim);
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: var(--font-arcade);
+  font-size: 0.7rem;
+  color: var(--text);
+}
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+  text-align: center;
+  padding: 2rem 1rem 3rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}

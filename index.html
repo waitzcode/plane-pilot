@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sky Runner — Browser Arcade Game</title>
+  <meta name="description" content="Sky Runner: a fast, free browser-based plane arcade game. Play instantly, no download." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a href="#top" class="logo">✈ SKY&nbsp;RUNNER</a>
+    <nav class="site-nav">
+      <a href="#play">Play</a>
+      <a href="#how-to-play">How to Play</a>
+      <a href="#about">About</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="top" class="hero">
+      <h1>SKY RUNNER</h1>
+      <p class="tagline">Dodge the storm. Chase the horizon. A fast, free browser arcade flying game — no download, no signup.</p>
+      <a href="#play" class="btn-play">▶ PLAY NOW</a>
+    </section>
+
+    <section id="play" class="game-section">
+      <div class="game-frame-wrap">
+        <iframe
+          class="game-frame"
+          src="game/index.html"
+          title="Sky Runner — playable game"
+          loading="lazy"
+        ></iframe>
+      </div>
+    </section>
+
+    <section id="how-to-play" class="info-section">
+      <h2>How to Play</h2>
+      <!-- Placeholder — replace with your own instructions/art whenever you're ready. -->
+      <p class="placeholder">
+        Pick a plane, then throttle up on the runway with <kbd>&uarr;</kbd> / <kbd>W</kbd> until you lift off.
+        Steer with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> / <kbd>A</kbd> <kbd>D</kbd>, pitch with
+        <kbd>&uarr;</kbd> <kbd>&darr;</kbd> / <kbd>W</kbd> <kbd>S</kbd>, and hold <kbd>Space</kbd> to boost.
+        On mobile, use the on-screen joystick and boost button.
+        Fly through the glowing rings over real Manhattan streets for points, then line back up with the runway,
+        slow down, and glide in level to land — clip a building or come in too hot and it's game over.
+        <em>(Edit this section in index.html to add more detail, screenshots, or tips.)</em>
+      </p>
+    </section>
+
+    <section id="about" class="info-section">
+      <h2>About</h2>
+      <!-- Placeholder — replace with your own about text. -->
+      <p class="placeholder">
+        <em>This is a placeholder About section. Add your story, credits, or dev notes here.</em>
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>&copy; 2026 Sky Runner. Built with plain HTML, CSS &amp; JS.</p>
+  </footer>
+</body>
+</html>
