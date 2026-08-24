@@ -248,8 +248,13 @@ function overlapsRunway(minX, maxX, minZ, maxZ) {
 function addBuildingFromFootprint(points, height, colorHex) {
   if (points.length < 3) return;
   var shape = new THREE.Shape();
-  shape.moveTo(points[0].x, points[0].z);
-  for (var i = 1; i < points.length; i++) shape.lineTo(points[i].x, points[i].z);
+  // Shape coordinates are pre-negated on Z: ExtrudeGeometry lays the shape out in the
+  // XY plane, and rotateX(-90deg) below (used to stand the extrusion up along world Y)
+  // also flips Z, so negating here up front is what makes the rendered mesh land at the
+  // same (x,z) as the `points` this building's collision check uses — without it the
+  // mesh renders as a mirror image of its own collision volume.
+  shape.moveTo(points[0].x, -points[0].z);
+  for (var i = 1; i < points.length; i++) shape.lineTo(points[i].x, -points[i].z);
 
   var minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (var j = 0; j < points.length; j++) {
