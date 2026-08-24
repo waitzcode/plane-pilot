@@ -36,9 +36,10 @@ var renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
 container.appendChild(renderer.domElement);
 
+var SKY_COLOR = 0x9fc6ea;
 var scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1226);
-scene.fog = new THREE.Fog(0x0a1226, 260, 1100);
+scene.background = new THREE.Color(SKY_COLOR);
+scene.fog = new THREE.Fog(SKY_COLOR, 260, 1100);
 
 var camera = new THREE.PerspectiveCamera(70, 1, 0.5, 3000);
 
@@ -54,13 +55,13 @@ window.addEventListener("resize", resize);
 // ---------------------------------------------------------------------------
 // Lighting
 // ---------------------------------------------------------------------------
-scene.add(new THREE.AmbientLight(0x8899cc, 0.7));
-var sun = new THREE.DirectionalLight(0xfff2d8, 1.1);
+scene.add(new THREE.AmbientLight(0xfff6e8, 0.75));
+var sun = new THREE.DirectionalLight(0xfff2d8, 1.15);
 sun.position.set(300, 400, 150);
 scene.add(sun);
-var rim = new THREE.DirectionalLight(0x2266ff, 0.4);
-rim.position.set(-250, 120, -180);
-scene.add(rim);
+var skyBounce = new THREE.DirectionalLight(0xcfe3f7, 0.25);
+skyBounce.position.set(-250, 120, -180);
+scene.add(skyBounce);
 
 // ---------------------------------------------------------------------------
 // World constants — a real slice of Manhattan (Flatiron / Madison Square area)
@@ -96,7 +97,10 @@ var RUNWAY_CLEAR = { // slightly larger, used to keep real buildings off the str
   maxZ: RUNWAY.maxZ + 12,
 };
 
-var buildingBoxes = []; // THREE.Box3 list for collision
+// Collision uses each building's real footprint polygon (not just its bounding box) —
+// Manhattan buildings are rarely axis-aligned rectangles, so a bounding-box check alone
+// flags empty street space as "inside a building" for any angled or irregular footprint.
+var buildings = []; // { points:[{x,z}...], minX,maxX,minZ,maxZ, height }
 var buildingsGroup = new THREE.Group();
 scene.add(buildingsGroup);
 
@@ -108,9 +112,17 @@ function makeGroundTexture() {
   var c = document.createElement("canvas");
   c.width = c.height = size;
   var g = c.getContext("2d");
-  g.fillStyle = "#0f1728";
+  g.fillStyle = "#4a4d52";
   g.fillRect(0, 0, size, size);
-  g.strokeStyle = "rgba(60, 90, 140, 0.25)";
+  // subtle asphalt speckle
+  for (var i = 0; i < 2200; i++) {
+    var shade = 60 + Math.floor(Math.random() * 40);
+    g.fillStyle = "rgba(" + shade + "," + shade + "," + (shade + 4) + "," + (0.15 + Math.random() * 0.2) + ")";
+    var px = Math.random() * size, py = Math.random() * size;
+    g.fillRect(px, py, 1.4, 1.4);
+  }
+  // faint block/sidewalk seams
+  g.strokeStyle = "rgba(200, 200, 200, 0.12)";
   g.lineWidth = 2;
   var cell = size / 8;
   for (var x = 0; x <= size; x += cell) {
@@ -146,9 +158,14 @@ function makeRunwayTexture() {
   var c = document.createElement("canvas");
   c.width = w; c.height = h;
   var g = c.getContext("2d");
-  g.fillStyle = "#1a1f2b";
+  g.fillStyle = "#333538";
   g.fillRect(0, 0, w, h);
-  g.strokeStyle = "#ffd400";
+  for (var i = 0; i < 900; i++) {
+    var shade = 40 + Math.floor(Math.random() * 25);
+    g.fillStyle = "rgba(" + shade + "," + shade + "," + shade + "," + (0.2 + Math.random() * 0.2) + ")";
+    g.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
+  }
+  g.strokeStyle = "#e8e8e0";
   g.lineWidth = 6;
   g.setLineDash([34, 26]);
   g.beginPath();
@@ -156,11 +173,11 @@ function makeRunwayTexture() {
   g.lineTo(w, h / 2);
   g.stroke();
   g.setLineDash([]);
-  g.fillStyle = "#ffffff";
+  g.fillStyle = "#e8e8e0";
   for (var side = 0; side < 2; side++) {
     var baseX = side === 0 ? 30 : w - 30 - 60;
-    for (var i = 0; i < 6; i++) {
-      g.fillRect(baseX + i * 12, 14, 6, h - 28);
+    for (var j = 0; j < 6; j++) {
+      g.fillRect(baseX + j * 12, 14, 6, h - 28);
     }
   }
   var tex = new THREE.CanvasTexture(c);
@@ -175,8 +192,8 @@ runwayMesh.rotation.x = -Math.PI / 2;
 runwayMesh.position.y = 0.06;
 scene.add(runwayMesh);
 
-// runway edge lights for arcade flair
-var edgeLightMat = new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.6 });
+// runway edge lights — real airports use small warm-white lights along the strip
+var edgeLightMat = new THREE.MeshStandardMaterial({ color: 0xfff2cc, emissive: 0xfff2cc, emissiveIntensity: 0.6 });
 for (var lx = RUNWAY.minX + 6; lx <= RUNWAY.maxX - 6; lx += 18) {
   [RUNWAY.minZ - 2, RUNWAY.maxZ + 2].forEach(function (lz) {
     var light = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 6), edgeLightMat);
@@ -189,12 +206,14 @@ for (var lx = RUNWAY.minX + 6; lx <= RUNWAY.maxX - 6; lx += 18) {
 // Real Manhattan buildings via OpenStreetMap Overpass API, with a procedural
 // fallback if the fetch fails (offline, blocked, rate-limited, etc).
 // ---------------------------------------------------------------------------
+// Realistic daylight building materials — muted concrete/brick/glass tones rather than
+// an arcade neon palette. Real OSM building:colour tags are used when a building has one.
 var HEIGHT_PALETTE = [
-  { max: 20, color: 0x3a2f2a },
-  { max: 40, color: 0x2f3a4a },
-  { max: 80, color: 0x27314f },
-  { max: 140, color: 0x233152 },
-  { max: 99999, color: 0x1c2438 },
+  { max: 20, color: 0x9c9184 },
+  { max: 40, color: 0x8f97a3 },
+  { max: 80, color: 0x7d93ab },
+  { max: 140, color: 0x6c86a3 },
+  { max: 99999, color: 0x5a7396 },
 ];
 function colorForHeight(h) {
   for (var i = 0; i < HEIGHT_PALETTE.length; i++) {
@@ -202,10 +221,20 @@ function colorForHeight(h) {
   }
   return HEIGHT_PALETTE[HEIGHT_PALETTE.length - 1].color;
 }
+function colorForBuilding(tags, height) {
+  if (tags && tags["building:colour"]) {
+    try {
+      return new THREE.Color(tags["building:colour"]).getHex();
+    } catch (e) {
+      /* invalid color string — fall through to the height-based palette */
+    }
+  }
+  return colorForHeight(height);
+}
 var materialCache = {};
 function materialFor(hexColor) {
   if (!materialCache[hexColor]) {
-    materialCache[hexColor] = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.85, metalness: 0.15 });
+    materialCache[hexColor] = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.85, metalness: 0.1 });
   }
   return materialCache[hexColor];
 }
@@ -216,7 +245,7 @@ function overlapsRunway(minX, maxX, minZ, maxZ) {
   );
 }
 
-function addBuildingFromFootprint(points, height) {
+function addBuildingFromFootprint(points, height, colorHex) {
   if (points.length < 3) return;
   var shape = new THREE.Shape();
   shape.moveTo(points[0].x, points[0].z);
@@ -232,10 +261,10 @@ function addBuildingFromFootprint(points, height) {
 
   var geom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
   geom.rotateX(-Math.PI / 2);
-  var mesh = new THREE.Mesh(geom, materialFor(colorForHeight(height)));
+  var mesh = new THREE.Mesh(geom, materialFor(colorHex));
   buildingsGroup.add(mesh);
 
-  buildingBoxes.push(new THREE.Box3(new THREE.Vector3(minX, 0, minZ), new THREE.Vector3(maxX, height, maxZ)));
+  buildings.push({ points: points, minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ, height: height });
 }
 
 function buildFromOsmElements(elements) {
@@ -259,7 +288,7 @@ function buildFromOsmElements(elements) {
       var a = pts[0], b = pts[pts.length - 1];
       if (Math.abs(a.x - b.x) < 0.001 && Math.abs(a.z - b.z) < 0.001) pts.pop();
     }
-    addBuildingFromFootprint(pts, height);
+    addBuildingFromFootprint(pts, height, colorForBuilding(tags, height));
     count++;
   }
   return count;
@@ -267,7 +296,6 @@ function buildFromOsmElements(elements) {
 
 function buildFallbackTown() {
   var BLOCK = 60;
-  var colors = [0x27314f, 0x2f3a5c, 0x233152, 0x3a2f52, 0x203a4a];
   var cells = Math.floor((TOWN_HALF * 2) / BLOCK);
   var start = -TOWN_HALF + BLOCK / 2;
   for (var ix = 0; ix < cells; ix++) {
@@ -283,7 +311,7 @@ function buildFallbackTown() {
         { x: cx + half, z: cz + half },
         { x: cx - half, z: cz + half },
       ];
-      addBuildingFromFootprint(pts, height);
+      addBuildingFromFootprint(pts, height, colorForHeight(height));
     }
   }
 }
@@ -328,7 +356,7 @@ fetchOsmBuildings()
   })
   .catch(function () {
     buildingsGroup.clear();
-    buildingBoxes.length = 0;
+    buildings.length = 0;
     buildFallbackTown();
   })
   .then(function () {
@@ -481,7 +509,7 @@ function placeRing(ring) {
 for (var i = 0; i < RING_COUNT; i++) {
   var ringMesh = new THREE.Mesh(
     new THREE.TorusGeometry(RING_RADIUS, 0.6, 10, 24),
-    new THREE.MeshStandardMaterial({ color: 0xffd400, emissive: 0xffaa00, emissiveIntensity: 1.1, roughness: 0.3 })
+    new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff7a1a, emissiveIntensity: 0.4, roughness: 0.5 })
   );
   ringsGroup.add(ringMesh);
   var ring = { mesh: ringMesh, normal: new THREE.Vector3() };
@@ -564,6 +592,7 @@ var GROUND_Y = 0.9;
 var LANDING_MAX_TILT = 0.35;
 
 var stats; // active plane's tuning, set on start
+var airborneElapsed = 0; // guards against rapidly re-triggering the landing bonus by skipping/bouncing
 
 function resetFlight() {
   stats = PLANE_PRESETS[selectedPresetIndex];
@@ -592,9 +621,42 @@ function showToast(text) {
   toastTimer = 1.6;
 }
 
-function isOverRunway(x, z, margin) {
-  margin = margin || 0;
-  return x > RUNWAY.minX - margin && x < RUNWAY.maxX + margin && z > RUNWAY.minZ - margin && z < RUNWAY.maxZ + margin;
+// Real footprints aren't axis-aligned rectangles, so collision does a proper
+// point-in-polygon test (buffered by roughly the plane's radius) against the actual
+// building shape, only for buildings a cheap bounding-box + height check can't rule out.
+var COLLISION_BUFFER = 2.4;
+function distPointToSegment(px, pz, ax, az, bx, bz) {
+  var abx = bx - ax, abz = bz - az;
+  var apx = px - ax, apz = pz - az;
+  var abLen2 = abx * abx + abz * abz;
+  var t = abLen2 > 0 ? Math.max(0, Math.min(1, (apx * abx + apz * abz) / abLen2)) : 0;
+  var cx = ax + abx * t, cz = az + abz * t;
+  var dx = px - cx, dz = pz - cz;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+function pointNearPolygon(px, pz, points, buffer) {
+  var inside = false;
+  for (var i = 0, j = points.length - 1; i < points.length; j = i++) {
+    var xi = points[i].x, zi = points[i].z;
+    var xj = points[j].x, zj = points[j].z;
+    var intersect = zi > pz !== zj > pz && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi;
+    if (intersect) inside = !inside;
+  }
+  if (inside) return true;
+  for (var k = 0, l = points.length - 1; k < points.length; l = k++) {
+    if (distPointToSegment(px, pz, points[l].x, points[l].z, points[k].x, points[k].z) < buffer) return true;
+  }
+  return false;
+}
+function isCollidingWithBuilding(x, y, z) {
+  for (var i = 0; i < buildings.length; i++) {
+    var b = buildings[i];
+    if (y > b.height + COLLISION_BUFFER) continue;
+    if (x < b.minX - COLLISION_BUFFER || x > b.maxX + COLLISION_BUFFER) continue;
+    if (z < b.minZ - COLLISION_BUFFER || z > b.maxZ + COLLISION_BUFFER) continue;
+    if (pointNearPolygon(x, z, b.points, COLLISION_BUFFER)) return true;
+  }
+  return false;
 }
 
 function updateFlight(dt) {
@@ -603,6 +665,7 @@ function updateFlight(dt) {
   var yawInput = Math.max(-1, Math.min(1, kbYaw + -joystickVec.x));
   var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch + -joystickVec.y));
   var wantsBoost = boosting || !!keys["Space"];
+  var vertSpeed = 0;
 
   if (grounded) {
     // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed
@@ -618,16 +681,15 @@ function updateFlight(dt) {
     plane.position.addScaledVector(forwardVec, speed * dt);
     plane.position.y = GROUND_Y;
 
-    if (!isOverRunway(plane.position.x, plane.position.z, 4)) {
-      return crash("Rolled off the runway!");
-    }
     if (speed >= stats.takeoffSpeed && throttlePitchInput > 0) {
       grounded = false;
+      airborneElapsed = 0;
       pitch = 0.18;
       statusEl.textContent = "AIRBORNE";
       showToast("Wheels up!");
     }
   } else {
+    airborneElapsed += dt;
     yaw += yawInput * stats.turnRate * dt;
     pitch += throttlePitchInput * stats.pitchRate * dt;
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
@@ -640,30 +702,8 @@ function updateFlight(dt) {
     plane.rotation.set(pitch, yaw, roll);
     forwardVec.set(0, 0, -1).applyEuler(plane.rotation);
     plane.position.addScaledVector(forwardVec, speed * dt);
+    vertSpeed = forwardVec.y * speed;
 
-    var vertSpeed = forwardVec.y * speed;
-    // Skip the ground check while still climbing away from a takeoff — only evaluate
-    // once the plane is level or descending, so liftoff doesn't immediately re-land it.
-    if (plane.position.y <= GROUND_MIN_Y && vertSpeed <= 3) {
-      var headingAligned = Math.abs(forwardVec.x) > 0.85; // roughly parallel to the runway's X axis
-      var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
-      var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
-      var safeSink = vertSpeed > -16;
-      var onRunway = isOverRunway(plane.position.x, plane.position.z, 6);
-
-      if (onRunway && headingAligned && safeSpeed && safeAttitude && safeSink) {
-        grounded = true;
-        plane.position.y = GROUND_Y;
-        pitch = 0;
-        roll = 0;
-        statusEl.textContent = "ON RUNWAY";
-        score += 5;
-        scoreEl.textContent = "Score: " + score;
-        showToast("Landed! +5");
-      } else {
-        return crash("Crashed!");
-      }
-    }
     if (plane.position.y > CEILING_Y) plane.position.y = CEILING_Y;
   }
 
@@ -671,8 +711,33 @@ function updateFlight(dt) {
   plane.position.x = Math.max(-half, Math.min(half, plane.position.x));
   plane.position.z = Math.max(-half, Math.min(half, plane.position.z));
 
-  for (var i = 0; i < buildingBoxes.length; i++) {
-    if (buildingBoxes[i].distanceToPoint(plane.position) < 2.4) return crash("Crashed!");
+  if (isCollidingWithBuilding(plane.position.x, plane.position.y, plane.position.z)) {
+    return crash("Crashed!");
+  }
+
+  // You can land anywhere, not just the runway — only speed/attitude/sink-rate need to be safe.
+  // Skip this while still climbing away from a takeoff so liftoff doesn't immediately re-land it.
+  if (!grounded && plane.position.y <= GROUND_MIN_Y && vertSpeed <= 3) {
+    var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
+    var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
+    var safeSink = vertSpeed > -16;
+
+    if (safeSpeed && safeAttitude && safeSink) {
+      grounded = true;
+      plane.position.y = GROUND_Y;
+      pitch = 0;
+      roll = 0;
+      statusEl.textContent = "LANDED";
+      if (airborneElapsed > 1) {
+        score += 5;
+        scoreEl.textContent = "Score: " + score;
+        showToast("Landed! +5");
+      } else {
+        showToast("Landed!");
+      }
+    } else {
+      return crash("Crashed!");
+    }
   }
 
   for (var r = 0; r < rings.length; r++) {
