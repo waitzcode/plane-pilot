@@ -632,48 +632,24 @@ CITIES.forEach(function (city, index) {
 // ---------------------------------------------------------------------------
 var PLANE_PRESETS = [
   {
-    name: "Cruiser",
-    stats: "Balanced • easy to fly",
-    bodyColor: 0x00f0ff,
-    accentColor: 0xff2e88,
+    name: "Cessna 172",
+    stats: "Light aircraft • slow & easy to fly",
+    type: "prop",
+    bodyColor: 0xf5f2e8,
+    accentColor: 0x1a5fb4,
     scale: 1,
-    cruiseSpeed: 85,
-    boostSpeed: 155,
-    turnRate: 1.7,
-    pitchRate: 1.15,
-    takeoffSpeed: 55,
-    groundAccel: 38,
-  },
-  {
-    name: "Falcon",
-    stats: "Fast • less nimble",
-    bodyColor: 0xff5a3c,
-    accentColor: 0xffd400,
-    scale: 0.88,
-    cruiseSpeed: 115,
-    boostSpeed: 195,
-    turnRate: 1.35,
-    pitchRate: 1,
-    takeoffSpeed: 75,
-    groundAccel: 50,
-  },
-  {
-    name: "Nimbus",
-    stats: "Agile • easy landings",
-    bodyColor: 0x7bff5a,
-    accentColor: 0xffd400,
-    scale: 1.18,
-    cruiseSpeed: 65,
-    boostSpeed: 115,
-    turnRate: 2.2,
-    pitchRate: 1.55,
-    takeoffSpeed: 40,
-    groundAccel: 30,
+    cruiseSpeed: 45,
+    boostSpeed: 75,
+    turnRate: 2.0,
+    pitchRate: 1.4,
+    takeoffSpeed: 28,
+    groundAccel: 22,
   },
   {
     name: "Boeing 737",
     stats: "Passenger jet • heavy, sluggish turns",
     type: "jetliner",
+    engines: 2,
     bodyColor: 0xf2f4f6,
     accentColor: 0x1a5fb4,
     scale: 1.35,
@@ -685,9 +661,26 @@ var PLANE_PRESETS = [
     groundAccel: 32,
   },
   {
+    name: "Boeing 747",
+    stats: "Jumbo jet • massive, slow to turn",
+    type: "jetliner",
+    engines: 4,
+    bodyColor: 0xf2f4f6,
+    accentColor: 0xc01c28,
+    scale: 1.75,
+    cruiseSpeed: 125,
+    boostSpeed: 180,
+    turnRate: 0.65,
+    pitchRate: 0.5,
+    takeoffSpeed: 110,
+    groundAccel: 28,
+  },
+  {
     name: "F-15 Eagle",
     stats: "Military jet • blistering speed & agility",
     type: "fighter",
+    tails: 2,
+    engines: 2,
     bodyColor: 0x7c8592,
     accentColor: 0x454c56,
     scale: 1.05,
@@ -697,6 +690,22 @@ var PLANE_PRESETS = [
     pitchRate: 2.0,
     takeoffSpeed: 70,
     groundAccel: 62,
+  },
+  {
+    name: "F-16 Fighting Falcon",
+    stats: "Military jet • smaller, even more agile",
+    type: "fighter",
+    tails: 1,
+    engines: 1,
+    bodyColor: 0xb9c0c8,
+    accentColor: 0x2a3038,
+    scale: 0.85,
+    cruiseSpeed: 155,
+    boostSpeed: 250,
+    turnRate: 3.0,
+    pitchRate: 2.3,
+    takeoffSpeed: 60,
+    groundAccel: 58,
   },
 ];
 
@@ -809,6 +818,7 @@ function buildJetlinerMesh(preset) {
     shape.closePath();
     return shape;
   }
+  var enginesPerSide = (preset.engines || 2) / 2;
   [-1, 1].forEach(function (side) {
     var wingGeom = new THREE.ExtrudeGeometry(makeSweptWingShape(2.2, 0.9, 6.4, 2.4), { depth: 0.16, bevelEnabled: false });
     wingGeom.translate(0, 0, -0.08);
@@ -818,11 +828,23 @@ function buildJetlinerMesh(preset) {
     wing.position.set(side * 1.0, -0.15, 0.6);
     group.add(wing);
 
-    var engine = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 1.7, 10), accentMat);
-    engine.rotation.x = Math.PI / 2;
-    engine.position.set(side * 3.6, -1.0, -0.3);
-    group.add(engine);
+    // 737 = one engine per side; 747 = two, spread further out along the wing.
+    var enginePositions = enginesPerSide >= 2 ? [2.6, 4.8] : [3.6];
+    enginePositions.forEach(function (ex) {
+      var engine = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 1.7, 10), accentMat);
+      engine.rotation.x = Math.PI / 2;
+      engine.position.set(side * ex, -1.0, -0.3);
+      group.add(engine);
+    });
   });
+
+  // The 747's signature upper-deck hump, just aft of the cockpit.
+  if ((preset.engines || 2) >= 4) {
+    var hump = new THREE.Mesh(new THREE.CapsuleGeometry(0.6, 2.0, 4, 10), bodyMat);
+    hump.rotation.x = Math.PI / 2;
+    hump.position.set(0, 1.05, -3.2);
+    group.add(hump);
+  }
 
   var tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.0, 1.7), accentMat);
   tailFin.rotation.z = -0.18;
@@ -913,21 +935,35 @@ function buildFighterMesh(preset) {
     intake.position.set(side * 0.75, -0.35, 0.2);
     group.add(intake);
 
-    var nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.7, 10), nozzleMat);
-    nozzle.rotation.x = Math.PI / 2;
-    nozzle.position.set(side * 0.5, -0.1, 3.2);
-    group.add(nozzle);
-
-    // twin canted tail fins, the F-15's signature silhouette
-    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.35, 1.1), accentMat);
-    fin.position.set(side * 0.7, 0.75, 2.9);
-    fin.rotation.z = side * 0.22;
-    group.add(fin);
-
     var stab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.85), bodyMat);
     stab.position.set(side * 1.15, -0.05, 3.0);
     group.add(stab);
   });
+
+  // F-15 (twin) vs F-16 (single) engine nozzle and tail fin -- the clearest visual
+  // difference between the two real jets.
+  var engineCount = preset.engines || 2;
+  var enginePositions = engineCount >= 2 ? [-0.5, 0.5] : [0];
+  enginePositions.forEach(function (ex) {
+    var nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.7, 10), nozzleMat);
+    nozzle.rotation.x = Math.PI / 2;
+    nozzle.position.set(ex, -0.1, 3.2);
+    group.add(nozzle);
+  });
+
+  var tailCount = preset.tails || 2;
+  if (tailCount >= 2) {
+    [-1, 1].forEach(function (side) {
+      var fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.35, 1.1), accentMat);
+      fin.position.set(side * 0.7, 0.75, 2.9);
+      fin.rotation.z = side * 0.22;
+      group.add(fin);
+    });
+  } else {
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.7, 1.3), accentMat);
+    fin.position.set(0, 0.85, 2.9);
+    group.add(fin);
+  }
 
   var flapMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.5, metalness: 0.3 });
   var flapsGroup = new THREE.Group();
