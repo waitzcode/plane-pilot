@@ -18,6 +18,7 @@ var altEl = document.getElementById("alt");
 var spdEl = document.getElementById("spd");
 var gearStatusEl = document.getElementById("gear-status");
 var flapsStatusEl = document.getElementById("flaps-status");
+var gearShiftEl = document.getElementById("gear-shift");
 var overlay = document.getElementById("overlay");
 var loadingMsg = document.getElementById("loading-msg");
 var readyPanel = document.getElementById("ready-panel");
@@ -1072,6 +1073,11 @@ var keys = {};
 // guards against the OS's key-repeat re-firing keydown while held).
 var gearDown = true;
 var flapsDown = false;
+// Throttle gear (1-5) caps top speed -- it auto-upshifts as a baseline (so mobile/no-
+// keyboard play is never stuck at gear 1), but a manual 1-5 press jumps straight to that
+// gear on demand: instant full power, or a deliberate downshift to help brake for landing.
+var DIGIT_GEAR = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5 };
+var currentGear = 1;
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
   if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
@@ -1084,6 +1090,10 @@ window.addEventListener("keydown", function (e) {
     flapsDown = !flapsDown;
     flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
     showToast(flapsDown ? "Flaps down" : "Flaps up");
+  } else if (DIGIT_GEAR[e.code]) {
+    currentGear = DIGIT_GEAR[e.code];
+    gearShiftEl.textContent = "SHIFT " + currentGear + "/5";
+    showToast("Shift: gear " + currentGear);
   }
 });
 window.addEventListener("keyup", function (e) {
@@ -1352,8 +1362,10 @@ function resetFlight() {
   grounded = true;
   gearDown = true;
   flapsDown = false;
+  currentGear = 1;
   gearStatusEl.textContent = "GEAR DOWN";
   flapsStatusEl.textContent = "FLAPS UP";
+  gearShiftEl.textContent = "SHIFT 1/5";
   score = 0;
   scoreEl.textContent = "Score: 0";
   statusEl.textContent = "ON RUNWAY";
@@ -1421,6 +1433,16 @@ function updateFlight(dt) {
   var wantsBoost = boosting || !!keys["Space"];
   var vertSpeed = 0;
 
+  // Throttle gear caps top speed at gear/5 of boostSpeed. Auto-upshifts once speed reaches
+  // the current cap so play never gets stuck at gear 1 (mobile has no way to shift), but a
+  // manual 1-5 press jumps straight to that gear immediately.
+  var gearCap = stats.boostSpeed * (currentGear / 5);
+  if (currentGear < 5 && speed >= gearCap * 0.95) {
+    currentGear++;
+    gearCap = stats.boostSpeed * (currentGear / 5);
+    gearShiftEl.textContent = "SHIFT " + currentGear + "/5";
+  }
+
   if (grounded) {
     // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed.
     // The boost control (Space / boost button) also throttles up on the ground -- it's the
@@ -1429,7 +1451,7 @@ function updateFlight(dt) {
     var throttleUp = throttlePitchInput > 0 || wantsBoost;
     yaw += yawInput * (TURN_RATE_BASE * 0.5) * dt;
     var accel = throttleUp ? stats.groundAccel : throttlePitchInput < 0 ? -stats.groundAccel * 1.4 : -4;
-    speed = Math.max(0, Math.min(stats.boostSpeed, speed + accel * dt));
+    speed = Math.max(0, Math.min(gearCap, speed + accel * dt));
     pitch = 0;
     roll = 0;
 
@@ -1459,7 +1481,7 @@ function updateFlight(dt) {
     // remembering to retract them after takeoff (and the reason to extend them again
     // before landing is a deliberate trade, not free).
     var dragMult = (gearDown ? 0.8 : 1) * (flapsDown ? 0.65 : 1);
-    var targetSpeed = (wantsBoost ? stats.boostSpeed : stats.cruiseSpeed) * dragMult;
+    var targetSpeed = Math.min((wantsBoost ? stats.boostSpeed : stats.cruiseSpeed) * dragMult, gearCap);
     speed += (targetSpeed - speed) * Math.min(1, dt * 2);
 
     plane.rotation.order = "YXZ";
