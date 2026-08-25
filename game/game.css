@@ -87,6 +87,25 @@ html, body {
   pointer-events: none;
 }
 
+#minimap-wrap {
+  position: absolute;
+  top: 3.6rem;
+  left: 0.6rem;
+  width: 8.75rem;
+  height: 8.75rem;
+  border-radius: 8px;
+  border: 2px solid rgba(0, 240, 255, 0.35);
+  background: rgba(5, 7, 12, 0.55);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#minimap {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 #overlay {
   position: absolute;
   inset: 0;

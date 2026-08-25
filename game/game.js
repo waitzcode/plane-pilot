@@ -26,6 +26,8 @@ var planeSelectEl = document.getElementById("plane-select");
 var startBtn = document.getElementById("start-btn");
 var toastEl = document.getElementById("toast");
 var flashEl = document.getElementById("flash");
+var minimapCanvas = document.getElementById("minimap");
+var minimapCtx = minimapCanvas.getContext("2d");
 var joystickBase = document.getElementById("joystick-base");
 var joystickKnob = document.getElementById("joystick-knob");
 var boostBtn = document.getElementById("boost-btn");
@@ -76,25 +78,25 @@ scene.add(skyBounce);
 // ---------------------------------------------------------------------------
 var CITIES = [
   {
-    id: "nyc", name: "New York", subtitle: "Manhattan skyline",
+    id: "nyc", name: "New York", code: "NY", subtitle: "Manhattan skyline",
     bbox: { south: 40.7385, west: -73.995, north: 40.7465, east: -73.9845 },
     worldHalf: 460,
     worldOffset: { x: 0, z: 0 },
   },
   {
-    id: "hnd", name: "Tokyo", subtitle: "Haneda Airport",
+    id: "hnd", name: "Tokyo", code: "TK", subtitle: "Haneda Airport",
     bbox: { south: 35.539316888250085, west: 139.7663591592919, north: 35.55728311174991, east: 139.7884408407081 },
     worldHalf: 1050,
     worldOffset: { x: -22000, z: -2500 },
   },
   {
-    id: "lax", name: "Los Angeles", subtitle: "LAX Airport",
+    id: "lax", name: "Los Angeles", code: "LA", subtitle: "LAX Airport",
     bbox: { south: 33.926516888250084, west: -118.41172737605143, north: 33.94448311174991, east: -118.39007262394856 },
     worldHalf: 1050,
     worldOffset: { x: -11000, z: 2500 },
   },
   {
-    id: "cdg", name: "Paris", subtitle: "Eiffel Tower",
+    id: "cdg", name: "Paris", code: "PA", subtitle: "Eiffel Tower",
     bbox: { south: 48.85195759971254, west: 2.2883561026430046, north: 48.86004240028746, east: 2.300643897356996 },
     worldHalf: 460,
     worldOffset: { x: 12000, z: -3000 },
@@ -1249,6 +1251,63 @@ function crash(reason) {
 }
 
 // ---------------------------------------------------------------------------
+// Minimap — a simple top-down world map showing every city and the plane's live
+// position/heading, so it's clear where you are and which way to go for the next one.
+// ---------------------------------------------------------------------------
+var MINIMAP_PAD = 22;
+function worldToMinimap(x, z) {
+  var w = minimapCanvas.width, h = minimapCanvas.height;
+  var u = (x - WORLD_MIN_X) / (WORLD_MAX_X - WORLD_MIN_X);
+  var v = (z - WORLD_MIN_Z) / (WORLD_MAX_Z - WORLD_MIN_Z);
+  return {
+    mx: MINIMAP_PAD + u * (w - MINIMAP_PAD * 2),
+    my: MINIMAP_PAD + v * (h - MINIMAP_PAD * 2),
+  };
+}
+
+function drawMinimap() {
+  var w = minimapCanvas.width, h = minimapCanvas.height;
+  minimapCtx.clearRect(0, 0, w, h);
+  minimapCtx.fillStyle = "#2f5f7d";
+  minimapCtx.fillRect(0, 0, w, h);
+
+  CITIES.forEach(function (city, index) {
+    var p = worldToMinimap(city.worldOffset.x, city.worldOffset.z);
+    var r = 7 + (city.worldHalf / 1050) * 6;
+    minimapCtx.fillStyle = index === currentCityIndex ? "#e8d9a8" : "#c9bd93";
+    minimapCtx.beginPath();
+    minimapCtx.arc(p.mx, p.my, r, 0, Math.PI * 2);
+    minimapCtx.fill();
+    minimapCtx.fillStyle = "#0a1226";
+    minimapCtx.font = "bold 15px sans-serif";
+    minimapCtx.textAlign = "center";
+    minimapCtx.textBaseline = "middle";
+    minimapCtx.fillText(city.code, p.mx, p.my + 1);
+  });
+
+  if (worldReady && plane) {
+    var pp = worldToMinimap(plane.position.x, plane.position.z);
+    minimapCtx.save();
+    minimapCtx.translate(pp.mx, pp.my);
+    // World Z maps directly to canvas Y and X to canvas X, but canvas rotate() is
+    // clockwise for +angle while +yaw turns the plane counter-clockwise in that mapping
+    // (forward = (-sin(yaw), -cos(yaw))) -- negate to match.
+    minimapCtx.rotate(-(yaw || 0));
+    minimapCtx.fillStyle = "#00f0ff";
+    minimapCtx.shadowColor = "rgba(0,240,255,0.9)";
+    minimapCtx.shadowBlur = 8;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(0, -11);
+    minimapCtx.lineTo(7, 8);
+    minimapCtx.lineTo(0, 4);
+    minimapCtx.lineTo(-7, 8);
+    minimapCtx.closePath();
+    minimapCtx.fill();
+    minimapCtx.restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main loop
 // ---------------------------------------------------------------------------
 var lastTime = null;
@@ -1290,6 +1349,8 @@ function loop(ts) {
   for (var i = 0; i < rings.length; i++) {
     rings[i].mesh.rotation.z += dt * 0.6;
   }
+
+  if (worldReady) drawMinimap();
 
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
