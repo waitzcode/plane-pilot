@@ -715,6 +715,35 @@ function updateFlight(dt) {
     vertSpeed = forwardVec.y * speed;
 
     if (plane.position.y > CEILING_Y) plane.position.y = CEILING_Y;
+
+    // You can land anywhere, not just the runway — only speed/attitude/sink-rate need to be
+    // safe. This must live here, inside the airborne branch, using THIS frame's freshly
+    // computed vertSpeed: checking it after the grounded/airborne if-else (as a shared
+    // `!grounded` check) used to also fire on the very same frame a takeoff just happened,
+    // reading vertSpeed's stale initial value of 0 (which reads as "safe") and immediately
+    // snapping the plane back down — so it could never actually leave the ground.
+    if (plane.position.y <= GROUND_MIN_Y && vertSpeed <= 3) {
+      var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
+      var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
+      var safeSink = vertSpeed > -16;
+
+      if (safeSpeed && safeAttitude && safeSink) {
+        grounded = true;
+        plane.position.y = GROUND_Y;
+        pitch = 0;
+        roll = 0;
+        statusEl.textContent = "LANDED";
+        if (airborneElapsed > 1) {
+          score += 5;
+          scoreEl.textContent = "Score: " + score;
+          showToast("Landed! +5");
+        } else {
+          showToast("Landed!");
+        }
+      } else {
+        return crash("Crashed!");
+      }
+    }
   }
 
   var half = TOWN_HALF + 30;
@@ -723,31 +752,6 @@ function updateFlight(dt) {
 
   if (isCollidingWithBuilding(plane.position.x, plane.position.y, plane.position.z)) {
     return crash("Crashed!");
-  }
-
-  // You can land anywhere, not just the runway — only speed/attitude/sink-rate need to be safe.
-  // Skip this while still climbing away from a takeoff so liftoff doesn't immediately re-land it.
-  if (!grounded && plane.position.y <= GROUND_MIN_Y && vertSpeed <= 3) {
-    var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
-    var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
-    var safeSink = vertSpeed > -16;
-
-    if (safeSpeed && safeAttitude && safeSink) {
-      grounded = true;
-      plane.position.y = GROUND_Y;
-      pitch = 0;
-      roll = 0;
-      statusEl.textContent = "LANDED";
-      if (airborneElapsed > 1) {
-        score += 5;
-        scoreEl.textContent = "Score: " + score;
-        showToast("Landed! +5");
-      } else {
-        showToast("Landed!");
-      }
-    } else {
-      return crash("Crashed!");
-    }
   }
 
   for (var r = 0; r < rings.length; r++) {
