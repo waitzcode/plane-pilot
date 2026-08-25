@@ -93,12 +93,31 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* flex-start (not center) so overflowing content scrolls cleanly from the top
+     instead of risking clipped, unreachable content above the visible area */
+  justify-content: flex-start;
   gap: 0.9rem;
   text-align: center;
   background: rgba(5, 7, 12, 0.72);
   color: #e6ecff;
   padding: 1rem;
+  overflow-y: auto;
+}
+
+/* Leading/trailing flexible spacers: center the content when it's short enough to
+   fit, but shrink to nothing (rather than clipping) so overflow scrolls from the top. */
+#overlay::before,
+#overlay::after {
+  content: "";
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Reserve space so the touch controls never overlap scrollable overlay content */
+@media (hover: none) and (pointer: coarse) {
+  #overlay {
+    padding-bottom: 6rem;
+  }
 }
 
 #overlay h1 {
@@ -126,6 +145,7 @@ html, body {
   font-size: 0.95rem;
 }
 
+#destination-select,
 #plane-select {
   display: flex;
   gap: 0.7rem;
@@ -134,7 +154,8 @@ html, body {
   max-width: 26rem;
 }
 
-.plane-card {
+.plane-card,
+.dest-card {
   font-family: inherit;
   color: #e6ecff;
   background: rgba(19, 26, 42, 0.9);
@@ -146,22 +167,36 @@ html, body {
   min-width: 8.5rem;
 }
 
-.plane-card .plane-name {
+.plane-card .plane-name,
+.dest-card .dest-name {
   display: block;
   font-weight: bold;
   margin-bottom: 0.3rem;
 }
 
-.plane-card .plane-stats {
+.plane-card .plane-stats,
+.dest-card .dest-stats {
   display: block;
   font-size: 0.7rem;
   color: #93a0c2;
   line-height: 1.4;
 }
 
-.plane-card.selected {
+.plane-card.selected,
+.dest-card.selected {
   border-color: #00f0ff;
   box-shadow: 0 0 14px rgba(0, 240, 255, 0.5);
+}
+
+.dest-card:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+#dest-loading {
+  font-size: 0.75rem;
+  color: #ffd400;
+  min-height: 1rem;
 }
 
 #start-btn {
@@ -178,6 +213,11 @@ html, body {
 
 #start-btn:active {
   transform: translateY(1px);
+}
+
+#start-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ---------- Touch controls ---------- */
@@ -226,11 +266,14 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Only shown once flight actually starts (body.playing) -- they'd otherwise sit fixed at
+   the bottom corners and overlap the ready-menu's destination/plane cards if that content
+   is tall enough to scroll. */
 @media (hover: none) and (pointer: coarse) {
-  #joystick-base {
+  body.playing #joystick-base {
     display: block;
   }
-  #boost-btn {
+  body.playing #boost-btn {
     display: flex;
   }
 }
