@@ -670,9 +670,46 @@ var PLANE_PRESETS = [
     takeoffSpeed: 40,
     groundAccel: 30,
   },
+  {
+    name: "Boeing 737",
+    stats: "Passenger jet • heavy, sluggish turns",
+    type: "jetliner",
+    bodyColor: 0xf2f4f6,
+    accentColor: 0x1a5fb4,
+    scale: 1.35,
+    cruiseSpeed: 130,
+    boostSpeed: 190,
+    turnRate: 0.85,
+    pitchRate: 0.65,
+    takeoffSpeed: 95,
+    groundAccel: 32,
+  },
+  {
+    name: "F-15 Eagle",
+    stats: "Military jet • blistering speed & agility",
+    type: "fighter",
+    bodyColor: 0x7c8592,
+    accentColor: 0x454c56,
+    scale: 1.05,
+    cruiseSpeed: 165,
+    boostSpeed: 270,
+    turnRate: 2.6,
+    pitchRate: 2.0,
+    takeoffSpeed: 70,
+    groundAccel: 62,
+  },
 ];
 
 function buildPlaneMesh(preset) {
+  var group =
+    preset.type === "jetliner" ? buildJetlinerMesh(preset) :
+    preset.type === "fighter" ? buildFighterMesh(preset) :
+    buildPropPlaneMesh(preset);
+  group.scale.setScalar(preset.scale);
+  return group;
+}
+
+function buildPropPlaneMesh(preset) {
   var group = new THREE.Group();
   var bodyMat = new THREE.MeshStandardMaterial({ color: preset.bodyColor, roughness: 0.4, metalness: 0.3 });
   var accentMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.4, metalness: 0.3 });
@@ -731,7 +768,192 @@ function buildPlaneMesh(preset) {
   });
   group.add(gearGroup);
 
-  group.scale.setScalar(preset.scale);
+  group.userData.gearGroup = gearGroup;
+  group.userData.flapsGroup = flapsGroup;
+  return group;
+}
+
+// Twin-engine passenger jetliner (Boeing-style): long fuselage, swept wings with
+// underslung engine pods, a window stripe, and a tall single tail fin.
+function buildJetlinerMesh(preset) {
+  var group = new THREE.Group();
+  var bodyMat = new THREE.MeshStandardMaterial({ color: preset.bodyColor, roughness: 0.35, metalness: 0.35 });
+  var accentMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.4, metalness: 0.25 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x141a22, roughness: 0.3, metalness: 0.5 });
+
+  var fuselage = new THREE.Mesh(new THREE.CapsuleGeometry(1.15, 7.2, 4, 12), bodyMat);
+  fuselage.rotation.x = Math.PI / 2;
+  group.add(fuselage);
+
+  var windowStripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 7.6), darkMat);
+  windowStripe.position.set(1.16, 0.55, 0);
+  group.add(windowStripe);
+  var windowStripe2 = windowStripe.clone();
+  windowStripe2.position.x = -1.16;
+  group.add(windowStripe2);
+
+  var cockpitGlass = new THREE.Mesh(
+    new THREE.SphereGeometry(1.0, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2.2),
+    new THREE.MeshStandardMaterial({ color: 0x0a1226, roughness: 0.15, metalness: 0.5 })
+  );
+  cockpitGlass.rotation.x = Math.PI / 2;
+  cockpitGlass.position.set(0, 0.35, -5.1);
+  group.add(cockpitGlass);
+
+  function makeSweptWingShape(rootChord, tipChord, span, sweep) {
+    var shape = new THREE.Shape();
+    shape.moveTo(0, -rootChord / 2);
+    shape.lineTo(span, -tipChord / 2 - sweep);
+    shape.lineTo(span, tipChord / 2 - sweep);
+    shape.lineTo(0, rootChord / 2);
+    shape.closePath();
+    return shape;
+  }
+  [-1, 1].forEach(function (side) {
+    var wingGeom = new THREE.ExtrudeGeometry(makeSweptWingShape(2.2, 0.9, 6.4, 2.4), { depth: 0.16, bevelEnabled: false });
+    wingGeom.translate(0, 0, -0.08);
+    var wing = new THREE.Mesh(wingGeom, bodyMat);
+    wing.rotation.x = Math.PI / 2;
+    wing.rotation.z = side < 0 ? Math.PI : 0;
+    wing.position.set(side * 1.0, -0.15, 0.6);
+    group.add(wing);
+
+    var engine = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.36, 1.7, 10), accentMat);
+    engine.rotation.x = Math.PI / 2;
+    engine.position.set(side * 3.6, -1.0, -0.3);
+    group.add(engine);
+  });
+
+  var tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.0, 1.7), accentMat);
+  tailFin.rotation.z = -0.18;
+  tailFin.position.set(0, 1.3, 5.4);
+  group.add(tailFin);
+
+  [-1, 1].forEach(function (side) {
+    var stab = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.9), bodyMat);
+    stab.position.set(side * 1.3, 1.15, 5.6);
+    stab.rotation.z = side * -0.05;
+    group.add(stab);
+  });
+
+  var flapMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.5, metalness: 0.2 });
+  var flapsGroup = new THREE.Group();
+  [-1, 1].forEach(function (side) {
+    var pivot = new THREE.Group();
+    pivot.position.set(side * 4.6, -0.55, 1.9);
+    var flap = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.7), flapMat);
+    flap.position.set(0, 0, 0.35);
+    pivot.add(flap);
+    flapsGroup.add(pivot);
+  });
+  group.add(flapsGroup);
+
+  var gearMat = new THREE.MeshStandardMaterial({ color: 0x111722, roughness: 0.6 });
+  var gearGroup = new THREE.Group();
+  [[-1.5, 0.4], [1.5, 0.4], [0, -3.4]].forEach(function (p) {
+    var strut = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 6), gearMat);
+    strut.position.set(p[0], -1.35, p[1]);
+    gearGroup.add(strut);
+    var wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.3, 10), gearMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(p[0], -1.75, p[1]);
+    gearGroup.add(wheel);
+  });
+  group.add(gearGroup);
+
+  group.userData.gearGroup = gearGroup;
+  group.userData.flapsGroup = flapsGroup;
+  return group;
+}
+
+// Twin-tail military fighter (F-15-style): sleek fuselage, swept delta wings, twin
+// canted tail fins, twin engine nozzles, and a bubble canopy.
+function buildFighterMesh(preset) {
+  var group = new THREE.Group();
+  var bodyMat = new THREE.MeshStandardMaterial({ color: preset.bodyColor, roughness: 0.5, metalness: 0.5 });
+  var accentMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.4, metalness: 0.4 });
+  var nozzleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.5, metalness: 0.8 });
+
+  var fuselage = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 5.0, 4, 10), bodyMat);
+  fuselage.rotation.x = Math.PI / 2;
+  group.add(fuselage);
+
+  var nose = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.7, 10), bodyMat);
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -3.9;
+  group.add(nose);
+
+  var canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.42, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0x0a1226, roughness: 0.1, metalness: 0.6 })
+  );
+  canopy.scale.set(1, 0.9, 1.8);
+  canopy.position.set(0, 0.55, -1.6);
+  group.add(canopy);
+
+  function makeDeltaWingShape(rootChord, tipChord, span, sweep) {
+    var shape = new THREE.Shape();
+    shape.moveTo(0, -rootChord / 2);
+    shape.lineTo(span, -tipChord / 2 - sweep);
+    shape.lineTo(span, tipChord / 2 - sweep);
+    shape.lineTo(0, rootChord / 2);
+    shape.closePath();
+    return shape;
+  }
+  [-1, 1].forEach(function (side) {
+    var wingGeom = new THREE.ExtrudeGeometry(makeDeltaWingShape(2.6, 0.5, 4.2, 3.4), { depth: 0.12, bevelEnabled: false });
+    wingGeom.translate(0, 0, -0.06);
+    var wing = new THREE.Mesh(wingGeom, accentMat);
+    wing.rotation.x = Math.PI / 2;
+    wing.rotation.z = side < 0 ? Math.PI : 0;
+    wing.position.set(side * 0.55, -0.05, 1.1);
+    group.add(wing);
+
+    var intake = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.5, 1.6), bodyMat);
+    intake.position.set(side * 0.75, -0.35, 0.2);
+    group.add(intake);
+
+    var nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.7, 10), nozzleMat);
+    nozzle.rotation.x = Math.PI / 2;
+    nozzle.position.set(side * 0.5, -0.1, 3.2);
+    group.add(nozzle);
+
+    // twin canted tail fins, the F-15's signature silhouette
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.35, 1.1), accentMat);
+    fin.position.set(side * 0.7, 0.75, 2.9);
+    fin.rotation.z = side * 0.22;
+    group.add(fin);
+
+    var stab = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.85), bodyMat);
+    stab.position.set(side * 1.15, -0.05, 3.0);
+    group.add(stab);
+  });
+
+  var flapMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.5, metalness: 0.3 });
+  var flapsGroup = new THREE.Group();
+  [-1, 1].forEach(function (side) {
+    var pivot = new THREE.Group();
+    pivot.position.set(side * 2.6, -0.1, 1.9);
+    var flap = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.5), flapMat);
+    flap.position.set(0, 0, 0.25);
+    pivot.add(flap);
+    flapsGroup.add(pivot);
+  });
+  group.add(flapsGroup);
+
+  var gearMat = new THREE.MeshStandardMaterial({ color: 0x111722, roughness: 0.6 });
+  var gearGroup = new THREE.Group();
+  [[-1.0, -0.9], [1.0, -0.9], [0, 1.7]].forEach(function (p) {
+    var strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 6), gearMat);
+    strut.position.set(p[0], -0.75, p[1]);
+    gearGroup.add(strut);
+    var wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 8), gearMat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(p[0], -1.0, p[1]);
+    gearGroup.add(wheel);
+  });
+  group.add(gearGroup);
+
   group.userData.gearGroup = gearGroup;
   group.userData.flapsGroup = flapsGroup;
   return group;
