@@ -1,7 +1,10 @@
-// Sky Runner 3D — self-contained arcade flying game over real-world city/airport layouts
-// (pulled from OpenStreetMap via the free Overpass API), with taxi/takeoff/landing physics,
-// a destination picker, and a plane-select screen. No dependency on the parent site; only
-// talks to the DOM inside game/index.html. Uses Three.js (loaded via importmap in index.html).
+// Sky Runner 3D — self-contained arcade flying game across real-world cities/airports
+// (pulled from OpenStreetMap via the free Overpass API). All cities share one always-loaded
+// world so you can fly seamlessly between them over open ocean, rather than teleporting
+// through a menu. Real-world distances between cities are heavily compressed (an actual
+// crossing is thousands of km — flying that at any playable speed would take hours), but
+// each city's own layout is the real, undistorted thing. No dependency on the parent site;
+// only talks to the DOM inside game/index.html. Uses Three.js (via importmap in index.html).
 import * as THREE from "three";
 
 // ---------------------------------------------------------------------------
@@ -41,9 +44,9 @@ container.appendChild(renderer.domElement);
 var SKY_COLOR = 0x9fc6ea;
 var scene = new THREE.Scene();
 scene.background = new THREE.Color(SKY_COLOR);
-scene.fog = new THREE.Fog(SKY_COLOR, 300, 1700);
+scene.fog = new THREE.Fog(SKY_COLOR, 350, 2600);
 
-var camera = new THREE.PerspectiveCamera(72, 1, 0.5, 4000);
+var camera = new THREE.PerspectiveCamera(72, 1, 0.5, 6000);
 
 function resize() {
   var w = Math.max(1, container.clientWidth);
@@ -66,64 +69,94 @@ skyBounce.position.set(-250, 120, -180);
 scene.add(skyBounce);
 
 // ---------------------------------------------------------------------------
-// Destinations — each a real place, fetched live from OpenStreetMap. New York has no
-// real runway in its downtown bbox, so it keeps a synthetic strip; Tokyo/LA use each
-// airport's actual real runway geometry (position, heading, length, width) from OSM.
+// Cities — each a real place, fetched live from OpenStreetMap, positioned at a
+// compressed offset in one shared world so they can all be flown between over open
+// ocean. Tokyo/LA use each airport's real runway; New York/Paris have no real runway
+// in their downtown bbox, so they keep a synthetic strip.
 // ---------------------------------------------------------------------------
-var DESTINATIONS = [
+var CITIES = [
   {
-    id: "nyc",
-    name: "New York",
-    subtitle: "Manhattan skyline",
+    id: "nyc", name: "New York", subtitle: "Manhattan skyline",
     bbox: { south: 40.7385, west: -73.995, north: 40.7465, east: -73.9845 },
     worldHalf: 460,
+    worldOffset: { x: 0, z: 0 },
   },
   {
-    id: "hnd",
-    name: "Tokyo",
-    subtitle: "Haneda Airport",
+    id: "hnd", name: "Tokyo", subtitle: "Haneda Airport",
     bbox: { south: 35.539316888250085, west: 139.7663591592919, north: 35.55728311174991, east: 139.7884408407081 },
     worldHalf: 1050,
+    worldOffset: { x: -22000, z: -2500 },
   },
   {
-    id: "lax",
-    name: "Los Angeles",
-    subtitle: "LAX Airport",
+    id: "lax", name: "Los Angeles", subtitle: "LAX Airport",
     bbox: { south: 33.926516888250084, west: -118.41172737605143, north: 33.94448311174991, east: -118.39007262394856 },
     worldHalf: 1050,
+    worldOffset: { x: -11000, z: 2500 },
+  },
+  {
+    id: "cdg", name: "Paris", subtitle: "Eiffel Tower",
+    bbox: { south: 48.85195759971254, west: 2.2883561026430046, north: 48.86004240028746, east: 2.300643897356996 },
+    worldHalf: 460,
+    worldOffset: { x: 12000, z: -3000 },
   },
 ];
-var CACHE_PREFIX = "sky-runner-3d-osm-cache-v2-";
-
-var RENDER_WORLD_HALF = 1100; // fixed, generous ground/fog size covering every destination
+var CACHE_PREFIX = "sky-runner-3d-osm-cache-v3-";
 var EARTH_R = 6371000;
 var CEILING_Y = 340;
 var GROUND_MIN_Y = 3;
+var LAND_MARGIN = 60; // how far past a city's worldHalf still counts as "land" for landing
 
-var CENTER_LAT = 0, CENTER_LON = 0; // set per destination before projecting
-var WORLD_HALF = 460; // set per destination — used for building filtering, ring bounds, world clamp
+CITIES.forEach(function (city) {
+  city.centerLat = (city.bbox.south + city.bbox.north) / 2;
+  city.centerLon = (city.bbox.west + city.bbox.east) / 2;
+});
 
-function project(lat, lon) {
-  var x = (lon - CENTER_LON) * Math.cos((CENTER_LAT * Math.PI) / 180) * (Math.PI / 180) * EARTH_R;
-  var z = (CENTER_LAT - lat) * (Math.PI / 180) * EARTH_R;
-  return { x: x, z: z };
+function projectForCity(city, lat, lon) {
+  var x = (lon - city.centerLon) * Math.cos((city.centerLat * Math.PI) / 180) * (Math.PI / 180) * EARTH_R;
+  var z = (city.centerLat - lat) * (Math.PI / 180) * EARTH_R;
+  return { x: x + city.worldOffset.x, z: z + city.worldOffset.z };
 }
 
+function isOverAnyCityLand(x, z) {
+  for (var i = 0; i < CITIES.length; i++) {
+    var c = CITIES[i];
+    var dx = x - c.worldOffset.x, dz = z - c.worldOffset.z;
+    if (Math.abs(dx) <= c.worldHalf + LAND_MARGIN && Math.abs(dz) <= c.worldHalf + LAND_MARGIN) return true;
+  }
+  return false;
+}
+
+// World bounds — computed from every city's offset + radius, with a healthy margin of
+// open ocean around the outside so cities never feel like they're right at the edge.
+var WORLD_MARGIN = 4000;
+var WORLD_MIN_X = Infinity, WORLD_MAX_X = -Infinity, WORLD_MIN_Z = Infinity, WORLD_MAX_Z = -Infinity;
+CITIES.forEach(function (c) {
+  WORLD_MIN_X = Math.min(WORLD_MIN_X, c.worldOffset.x - c.worldHalf);
+  WORLD_MAX_X = Math.max(WORLD_MAX_X, c.worldOffset.x + c.worldHalf);
+  WORLD_MIN_Z = Math.min(WORLD_MIN_Z, c.worldOffset.z - c.worldHalf);
+  WORLD_MAX_Z = Math.max(WORLD_MAX_Z, c.worldOffset.z + c.worldHalf);
+});
+WORLD_MIN_X -= WORLD_MARGIN; WORLD_MAX_X += WORLD_MARGIN;
+WORLD_MIN_Z -= WORLD_MARGIN; WORLD_MAX_Z += WORLD_MARGIN;
+
 // ---------------------------------------------------------------------------
-// Runway — an oriented rectangle (center, heading, length, width) rather than a fixed
-// axis-aligned box, so a real runway's actual position/orientation can be used directly.
+// Runway — an oriented rectangle (center, heading, length, width) so a real runway's
+// actual position/orientation can be used directly instead of a fixed axis-aligned box.
 // ---------------------------------------------------------------------------
 var RUNWAY_LENGTH_CAP = 520; // real runways run 2.5-3.5km; capped to an arcade-appropriate strip
-var RUNWAY = null; // { cx, cz, dirX, dirZ, normX, normZ, halfLength, halfWidth, meshHeadingY }
 
-function makeSyntheticRunway() {
-  return { cx: 0, cz: 0, dirX: 1, dirZ: 0, normX: 0, normZ: 1, halfLength: 110, halfWidth: 15, meshHeadingY: 0 };
+function makeSyntheticRunway(city) {
+  return {
+    cx: city.worldOffset.x, cz: city.worldOffset.z,
+    dirX: 1, dirZ: 0, normX: 0, normZ: 1,
+    halfLength: 110, halfWidth: 15, meshHeadingY: 0,
+  };
 }
 
-function runwayFromOsmWay(way) {
+function runwayFromOsmWay(city, way) {
   var g = way.geometry;
-  var a = project(g[0].lat, g[0].lon);
-  var b = project(g[g.length - 1].lat, g[g.length - 1].lon);
+  var a = projectForCity(city, g[0].lat, g[0].lon);
+  var b = projectForCity(city, g[g.length - 1].lat, g[g.length - 1].lon);
   var dx = b.x - a.x, dz = b.z - a.z;
   var realLength = Math.sqrt(dx * dx + dz * dz);
   if (realLength < 1) return null;
@@ -133,51 +166,79 @@ function runwayFromOsmWay(way) {
   width = Math.max(20, Math.min(70, width));
   var halfLength = Math.min(realLength, RUNWAY_LENGTH_CAP) / 2;
   return {
-    cx: (a.x + b.x) / 2,
-    cz: (a.z + b.z) / 2,
-    dirX: dirX,
-    dirZ: dirZ,
-    normX: -dirZ,
-    normZ: dirX,
-    halfLength: halfLength,
-    halfWidth: width / 2,
+    cx: (a.x + b.x) / 2, cz: (a.z + b.z) / 2,
+    dirX: dirX, dirZ: dirZ, normX: -dirZ, normZ: dirX,
+    halfLength: halfLength, halfWidth: width / 2,
     meshHeadingY: Math.atan2(-dirZ, dirX),
   };
 }
 
-function pickPrimaryRunway(runwayElements) {
+function pickPrimaryRunway(city, runwayElements) {
   var best = null, bestLen = -1;
   for (var i = 0; i < runwayElements.length; i++) {
     var way = runwayElements[i];
     if (!way.geometry || way.geometry.length < 2) continue;
     var g = way.geometry;
-    var a = project(g[0].lat, g[0].lon);
-    var b = project(g[g.length - 1].lat, g[g.length - 1].lon);
+    var a = projectForCity(city, g[0].lat, g[0].lon);
+    var b = projectForCity(city, g[g.length - 1].lat, g[g.length - 1].lon);
     var len = Math.hypot(b.x - a.x, b.z - a.z);
     if (len > bestLen) {
       bestLen = len;
       best = way;
     }
   }
-  return best ? runwayFromOsmWay(best) : null;
+  return best ? runwayFromOsmWay(city, best) : null;
 }
 
-function overlapsRunway(minX, maxX, minZ, maxZ) {
-  var corners = [
-    [minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ],
-  ];
+function overlapsRunway(runway, minX, maxX, minZ, maxZ) {
+  var corners = [[minX, minZ], [maxX, minZ], [maxX, maxZ], [minX, maxZ]];
   for (var i = 0; i < 4; i++) {
-    var dx = corners[i][0] - RUNWAY.cx, dz = corners[i][1] - RUNWAY.cz;
-    var along = dx * RUNWAY.dirX + dz * RUNWAY.dirZ;
-    var across = dx * RUNWAY.normX + dz * RUNWAY.normZ;
-    if (Math.abs(along) < RUNWAY.halfLength + 12 && Math.abs(across) < RUNWAY.halfWidth + 12) return true;
+    var dx = corners[i][0] - runway.cx, dz = corners[i][1] - runway.cz;
+    var along = dx * runway.dirX + dz * runway.dirZ;
+    var across = dx * runway.normX + dz * runway.normZ;
+    if (Math.abs(along) < runway.halfLength + 12 && Math.abs(across) < runway.halfWidth + 12) return true;
   }
   return false;
 }
 
 // ---------------------------------------------------------------------------
-// Ground — one fixed, generously sized plane; never rebuilt between destinations.
+// Ocean — one big plane covering the whole world, with a slowly scrolling texture for a
+// cheap animated-water feel. Each city sits on its own smaller "landmass" ground patch.
 // ---------------------------------------------------------------------------
+function makeOceanTexture() {
+  var size = 256;
+  var c = document.createElement("canvas");
+  c.width = c.height = size;
+  var g = c.getContext("2d");
+  g.fillStyle = "#2f6f92";
+  g.fillRect(0, 0, size, size);
+  for (var i = 0; i < 500; i++) {
+    var shade = 60 + Math.floor(Math.random() * 50);
+    g.strokeStyle = "rgba(" + (shade - 20) + "," + (shade + 30) + "," + (shade + 50) + "," + (0.12 + Math.random() * 0.15) + ")";
+    g.lineWidth = 1 + Math.random() * 1.5;
+    var y = Math.random() * size;
+    g.beginPath();
+    g.moveTo(0, y);
+    g.bezierCurveTo(size * 0.3, y + (Math.random() - 0.5) * 14, size * 0.7, y + (Math.random() - 0.5) * 14, size, y);
+    g.stroke();
+  }
+  var tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  var span = (WORLD_MAX_X - WORLD_MIN_X + WORLD_MAX_Z - WORLD_MIN_Z);
+  tex.repeat.set(span / 80, span / 80);
+  return tex;
+}
+
+var oceanSize = Math.max(WORLD_MAX_X - WORLD_MIN_X, WORLD_MAX_Z - WORLD_MIN_Z) + WORLD_MARGIN * 2;
+var oceanTexture = makeOceanTexture();
+var ocean = new THREE.Mesh(
+  new THREE.PlaneGeometry(oceanSize, oceanSize),
+  new THREE.MeshStandardMaterial({ map: oceanTexture, color: 0x3f83a6, roughness: 0.5, metalness: 0.1 })
+);
+ocean.position.set((WORLD_MIN_X + WORLD_MAX_X) / 2, -0.15, (WORLD_MIN_Z + WORLD_MAX_Z) / 2);
+ocean.rotation.x = -Math.PI / 2;
+scene.add(ocean);
+
 function makeGroundTexture() {
   var size = 512;
   var c = document.createElement("canvas");
@@ -208,22 +269,34 @@ function makeGroundTexture() {
   }
   var tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(RENDER_WORLD_HALF / 30, RENDER_WORLD_HALF / 30);
   return tex;
 }
 
-var ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(RENDER_WORLD_HALF * 2.4, RENDER_WORLD_HALF * 2.4),
-  new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 1 })
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
+function buildLandmass(city) {
+  var tex = makeGroundTexture();
+  tex.repeat.set(city.worldHalf / 30, city.worldHalf / 30);
+  var mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(city.worldHalf * 2.3, city.worldHalf * 2.3),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 1 })
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(city.worldOffset.x, -0.02, city.worldOffset.z);
+  scene.add(mesh);
+
+  // a soft coastline ring so the landmass doesn't just end in a hard rectangular edge
+  var shoreMesh = new THREE.Mesh(
+    new THREE.RingGeometry(city.worldHalf * 1.02, city.worldHalf * 1.3, 48),
+    new THREE.MeshStandardMaterial({ color: 0xcbb98f, roughness: 1, transparent: true, opacity: 0.5 })
+  );
+  shoreMesh.rotation.x = -Math.PI / 2;
+  shoreMesh.position.set(city.worldOffset.x, -0.01, city.worldOffset.z);
+  scene.add(shoreMesh);
+}
 
 // ---------------------------------------------------------------------------
-// Runway mesh + edge lights — rebuilt (disposed and recreated) per destination, since
-// each destination's runway has a different position, orientation, length and width.
+// Runway mesh + edge lights — built once per city and kept for the whole session.
 // ---------------------------------------------------------------------------
-function makeRunwayTexture(lengthM) {
+function makeRunwayTexture() {
   var w = 1024, h = 140;
   var c = document.createElement("canvas");
   c.width = w; c.height = h;
@@ -254,61 +327,48 @@ function makeRunwayTexture(lengthM) {
   return tex;
 }
 
-var runwayMesh = null;
 var edgeLightMat = new THREE.MeshStandardMaterial({ color: 0xfff2cc, emissive: 0xfff2cc, emissiveIntensity: 0.6 });
-var edgeLightsGroup = new THREE.Group();
-scene.add(edgeLightsGroup);
 
-function rebuildRunwayMesh() {
-  if (runwayMesh) {
-    scene.remove(runwayMesh);
-    runwayMesh.geometry.dispose();
-    runwayMesh.material.map.dispose();
-    runwayMesh.material.dispose();
-  }
-  var length = RUNWAY.halfLength * 2, width = RUNWAY.halfWidth * 2;
-  runwayMesh = new THREE.Mesh(
+function buildRunwayMesh(runway) {
+  var length = runway.halfLength * 2, width = runway.halfWidth * 2;
+  var mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(length, width),
-    new THREE.MeshStandardMaterial({ map: makeRunwayTexture(length), roughness: 0.9 })
+    new THREE.MeshStandardMaterial({ map: makeRunwayTexture(), roughness: 0.9 })
   );
   var tiltQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
-  var headingQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), RUNWAY.meshHeadingY);
-  runwayMesh.quaternion.copy(headingQuat).multiply(tiltQuat);
-  runwayMesh.position.set(RUNWAY.cx, 0.06, RUNWAY.cz);
-  scene.add(runwayMesh);
+  var headingQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), runway.meshHeadingY);
+  mesh.quaternion.copy(headingQuat).multiply(tiltQuat);
+  mesh.position.set(runway.cx, 0.06, runway.cz);
+  scene.add(mesh);
 
-  while (edgeLightsGroup.children.length) {
-    var m = edgeLightsGroup.children[0];
-    edgeLightsGroup.remove(m);
-    m.geometry.dispose();
-  }
-  for (var along = -RUNWAY.halfLength + 6; along <= RUNWAY.halfLength - 6; along += 18) {
-    [-RUNWAY.halfWidth - 2, RUNWAY.halfWidth + 2].forEach(function (across) {
-      var lx = RUNWAY.cx + RUNWAY.dirX * along + RUNWAY.normX * across;
-      var lz = RUNWAY.cz + RUNWAY.dirZ * along + RUNWAY.normZ * across;
+  for (var along = -runway.halfLength + 6; along <= runway.halfLength - 6; along += 18) {
+    [-runway.halfWidth - 2, runway.halfWidth + 2].forEach(function (across) {
+      var lx = runway.cx + runway.dirX * along + runway.normX * across;
+      var lz = runway.cz + runway.dirZ * along + runway.normZ * across;
       var light = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 6), edgeLightMat);
       light.position.set(lx, 0.6, lz);
-      edgeLightsGroup.add(light);
+      scene.add(light);
     });
   }
 }
 
 // ---------------------------------------------------------------------------
-// Real buildings via OpenStreetMap Overpass API, with a procedural fallback if the
-// fetch fails (offline, blocked, rate-limited, etc).
+// Real buildings via OpenStreetMap Overpass API, with a procedural fallback per city
+// if its fetch fails (offline, blocked, rate-limited, etc). Side walls get a real-scale
+// window-facade texture (built once, tiled per meter) rather than a flat solid color.
 // ---------------------------------------------------------------------------
 var HEIGHT_PALETTE = [
-  { max: 20, color: 0x9c9184 },
-  { max: 40, color: 0x8f97a3 },
-  { max: 80, color: 0x7d93ab },
-  { max: 140, color: 0x6c86a3 },
-  { max: 99999, color: 0x5a7396 },
+  { max: 20, color: 0x9c9184, roughness: 0.9, metalness: 0.05 },
+  { max: 40, color: 0x8f97a3, roughness: 0.8, metalness: 0.1 },
+  { max: 80, color: 0x7d93ab, roughness: 0.6, metalness: 0.25 },
+  { max: 140, color: 0x6c86a3, roughness: 0.45, metalness: 0.4 },
+  { max: 99999, color: 0x5a7396, roughness: 0.3, metalness: 0.55 },
 ];
-function colorForHeight(h) {
+function paletteForHeight(h) {
   for (var i = 0; i < HEIGHT_PALETTE.length; i++) {
-    if (h <= HEIGHT_PALETTE[i].max) return HEIGHT_PALETTE[i].color;
+    if (h <= HEIGHT_PALETTE[i].max) return HEIGHT_PALETTE[i];
   }
-  return HEIGHT_PALETTE[HEIGHT_PALETTE.length - 1].color;
+  return HEIGHT_PALETTE[HEIGHT_PALETTE.length - 1];
 }
 function colorForBuilding(tags, height) {
   if (tags && tags["building:colour"]) {
@@ -318,30 +378,74 @@ function colorForBuilding(tags, height) {
       /* invalid color string — fall through to the height-based palette */
     }
   }
-  return colorForHeight(height);
+  return paletteForHeight(height).color;
 }
+
+// A single window-facade texture, reused (tinted per building via material.color) across
+// every building — a custom UV generator gives real-meter side-wall UVs so window spacing
+// looks consistent regardless of a building's footprint size, and roof/floor caps sample a
+// flat swatch in the texture's corner instead of a stretched/tiled window pattern.
+function makeFacadeTexture() {
+  var size = 64;
+  var c = document.createElement("canvas");
+  c.width = c.height = size;
+  var g = c.getContext("2d");
+  g.fillStyle = "#b9c3cc";
+  g.fillRect(0, 0, size, size);
+  var pad = 8;
+  g.fillStyle = "#43586e";
+  g.fillRect(pad, pad, size - pad * 2, size - pad * 2);
+  g.fillStyle = "rgba(255,255,255,0.18)";
+  g.fillRect(pad, pad, size - pad * 2, 3);
+  // flat roof/floor-cap swatch, kept in the corner well away from the window
+  g.fillStyle = "#585d61";
+  g.fillRect(0, 0, 4, 4);
+  var tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+var facadeTexture = makeFacadeTexture();
+var WINDOW_SPACING_U = 3.4; // meters per window column
+var WINDOW_SPACING_V = 3.6; // meters per floor
+var CAP_UV = new THREE.Vector2(0.01, 0.01); // lands inside the flat corner swatch
+
+var facadeUVGenerator = {
+  generateTopUV: function () { return [CAP_UV.clone(), CAP_UV.clone(), CAP_UV.clone()]; },
+  generateBottomUV: function () { return [CAP_UV.clone(), CAP_UV.clone(), CAP_UV.clone()]; },
+  generateSideWallUV: function (geometry, vertices, indexA, indexB, indexC, indexD) {
+    var ax = vertices[indexA * 3], ay = vertices[indexA * 3 + 1], az = vertices[indexA * 3 + 2];
+    var bx = vertices[indexB * 3], by = vertices[indexB * 3 + 1], bz = vertices[indexB * 3 + 2];
+    var cz = vertices[indexC * 3 + 2];
+    var dz = vertices[indexD * 3 + 2];
+    var span = Math.hypot(bx - ax, by - ay);
+    return [
+      new THREE.Vector2(0, az / WINDOW_SPACING_V),
+      new THREE.Vector2(span / WINDOW_SPACING_U, bz / WINDOW_SPACING_V),
+      new THREE.Vector2(span / WINDOW_SPACING_U, cz / WINDOW_SPACING_V),
+      new THREE.Vector2(0, dz / WINDOW_SPACING_V),
+    ];
+  },
+};
+
 var materialCache = {};
-function materialFor(hexColor) {
-  if (!materialCache[hexColor]) {
-    materialCache[hexColor] = new THREE.MeshStandardMaterial({ color: hexColor, roughness: 0.85, metalness: 0.1 });
+function materialFor(hexColor, roughness, metalness) {
+  var key = hexColor + "|" + roughness + "|" + metalness;
+  if (!materialCache[key]) {
+    materialCache[key] = new THREE.MeshStandardMaterial({
+      color: hexColor,
+      map: facadeTexture,
+      roughness: roughness,
+      metalness: metalness,
+    });
   }
-  return materialCache[hexColor];
+  return materialCache[key];
 }
 
 var buildings = []; // { points:[{x,z}...], minX,maxX,minZ,maxZ, height }
 var buildingsGroup = new THREE.Group();
 scene.add(buildingsGroup);
 
-function clearWorld() {
-  while (buildingsGroup.children.length) {
-    var mesh = buildingsGroup.children[0];
-    buildingsGroup.remove(mesh);
-    mesh.geometry.dispose();
-  }
-  buildings.length = 0;
-}
-
-function addBuildingFromFootprint(points, height, colorHex) {
+function addBuildingFromFootprint(runway, points, height, colorHex, roughness, metalness) {
   if (points.length < 3) return;
   var shape = new THREE.Shape();
   // Shape coordinates are pre-negated on Z: ExtrudeGeometry lays the shape out in the
@@ -357,18 +461,17 @@ function addBuildingFromFootprint(points, height, colorHex) {
     minX = Math.min(minX, points[j].x); maxX = Math.max(maxX, points[j].x);
     minZ = Math.min(minZ, points[j].z); maxZ = Math.max(maxZ, points[j].z);
   }
-  if (overlapsRunway(minX, maxX, minZ, maxZ)) return;
-  if (Math.max(Math.abs(minX), Math.abs(maxX), Math.abs(minZ), Math.abs(maxZ)) > WORLD_HALF) return;
+  if (overlapsRunway(runway, minX, maxX, minZ, maxZ)) return;
 
-  var geom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+  var geom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false, UVGenerator: facadeUVGenerator });
   geom.rotateX(-Math.PI / 2);
-  var mesh = new THREE.Mesh(geom, materialFor(colorHex));
+  var mesh = new THREE.Mesh(geom, materialFor(colorHex, roughness, metalness));
   buildingsGroup.add(mesh);
 
   buildings.push({ points: points, minX: minX, maxX: maxX, minZ: minZ, maxZ: maxZ, height: height });
 }
 
-function buildFromOsmElements(elements) {
+function buildFromOsmElements(city, runway, elements) {
   var count = 0;
   for (var i = 0; i < elements.length; i++) {
     var el = elements[i];
@@ -383,46 +486,49 @@ function buildFromOsmElements(elements) {
     }
     height = Math.max(6, Math.min(280, height));
 
-    var pts = geom.map(function (pt) { return project(pt.lat, pt.lon); });
+    var pts = geom.map(function (pt) { return projectForCity(city, pt.lat, pt.lon); });
     // drop the closing duplicate point OSM ways include
     if (pts.length > 1) {
       var a = pts[0], b = pts[pts.length - 1];
       if (Math.abs(a.x - b.x) < 0.001 && Math.abs(a.z - b.z) < 0.001) pts.pop();
     }
-    addBuildingFromFootprint(pts, height, colorForBuilding(tags, height));
+    var palette = paletteForHeight(height);
+    addBuildingFromFootprint(runway, pts, height, colorForBuilding(tags, height), palette.roughness, palette.metalness);
     count++;
   }
   return count;
 }
 
-function buildFallbackTown() {
+function buildFallbackTown(city, runway) {
   var BLOCK = 60;
-  var cells = Math.floor((WORLD_HALF * 2) / BLOCK);
-  var start = -WORLD_HALF + BLOCK / 2;
+  var half = city.worldHalf;
+  var cells = Math.floor((half * 2) / BLOCK);
+  var start = -half + BLOCK / 2;
   for (var ix = 0; ix < cells; ix++) {
     for (var iz = 0; iz < cells; iz++) {
-      var cx = start + ix * BLOCK;
-      var cz = start + iz * BLOCK;
+      var cx = city.worldOffset.x + start + ix * BLOCK;
+      var cz = city.worldOffset.z + start + iz * BLOCK;
       var footprint = 26 + Math.random() * 10;
       var height = 14 + Math.random() * 55;
-      var half = footprint / 2;
+      var halfFp = footprint / 2;
       var pts = [
-        { x: cx - half, z: cz - half },
-        { x: cx + half, z: cz - half },
-        { x: cx + half, z: cz + half },
-        { x: cx - half, z: cz + half },
+        { x: cx - halfFp, z: cz - halfFp },
+        { x: cx + halfFp, z: cz - halfFp },
+        { x: cx + halfFp, z: cz + halfFp },
+        { x: cx - halfFp, z: cz + halfFp },
       ];
-      addBuildingFromFootprint(pts, height, colorForHeight(height));
+      var palette = paletteForHeight(height);
+      addBuildingFromFootprint(runway, pts, height, palette.color, palette.roughness, palette.metalness);
     }
   }
 }
 
-function fetchDestinationData(dest) {
-  var b = dest.bbox;
+function fetchCityData(city) {
+  var b = city.bbox;
   var query =
     "[out:json][timeout:25];(way[\"building\"](" + b.south + "," + b.west + "," + b.north + "," + b.east + ");" +
     "way[\"aeroway\"=\"runway\"](" + b.south + "," + b.west + "," + b.north + "," + b.east + "););out body geom;";
-  var cacheKey = CACHE_PREFIX + dest.id;
+  var cacheKey = CACHE_PREFIX + city.id;
   var cached = null;
   try {
     var raw = localStorage.getItem(cacheKey);
@@ -451,72 +557,66 @@ function fetchDestinationData(dest) {
     });
 }
 
-var worldReady = false;
-var currentDestIndex = 0;
-var loadGeneration = 0;
-
-function loadDestination(index) {
-  var dest = DESTINATIONS[index];
-  var myGeneration = ++loadGeneration;
-  currentDestIndex = index;
-  worldReady = false;
-
-  var cards = destSelectEl.querySelectorAll(".dest-card");
-  for (var c = 0; c < cards.length; c++) {
-    cards[c].classList.toggle("selected", c === index);
-    cards[c].disabled = true;
-  }
-  destLoadingEl.textContent = "Loading " + dest.name + " map data…";
-  startBtn.disabled = true;
-
-  CENTER_LAT = (dest.bbox.south + dest.bbox.north) / 2;
-  CENTER_LON = (dest.bbox.west + dest.bbox.east) / 2;
-  WORLD_HALF = dest.worldHalf;
-
-  fetchDestinationData(dest)
+function loadCity(city) {
+  return fetchCityData(city)
     .then(function (elements) {
-      if (myGeneration !== loadGeneration) return;
-      // RUNWAY must be resolved before buildings are built: addBuildingFromFootprint
-      // excludes footprints overlapping it, so building the list first (with RUNWAY still
-      // stale/null) would either crash on the very first load or exclude against the wrong
-      // strip on a destination switch.
       var runwayEls = elements.filter(function (e) { return e.tags && e.tags.aeroway === "runway"; });
-      RUNWAY = pickPrimaryRunway(runwayEls) || makeSyntheticRunway();
-      clearWorld();
-      var buildingCount = buildFromOsmElements(elements);
-      if (buildingCount === 0) throw new Error("no buildings returned");
+      var runway = pickPrimaryRunway(city, runwayEls) || makeSyntheticRunway(city);
+      var n = buildFromOsmElements(city, runway, elements);
+      if (n === 0) throw new Error("no buildings returned");
+      city.runway = runway;
     })
     .catch(function () {
-      if (myGeneration !== loadGeneration) return;
-      clearWorld();
-      RUNWAY = makeSyntheticRunway();
-      buildFallbackTown();
+      var runway = makeSyntheticRunway(city);
+      buildFallbackTown(city, runway);
+      city.runway = runway;
     })
     .then(function () {
-      if (myGeneration !== loadGeneration) return;
-      rebuildRunwayMesh();
-      worldReady = true;
-      destLoadingEl.textContent = "";
-      for (var c2 = 0; c2 < cards.length; c2++) cards[c2].disabled = false;
-      startBtn.disabled = false;
-      loadingMsg.style.display = "none";
-      readyPanel.style.display = "flex";
-      resetFlight();
+      buildLandmass(city);
+      buildRunwayMesh(city.runway);
     });
 }
 
-function selectDestination(index) {
-  if (index === currentDestIndex && worldReady) return;
-  loadDestination(index);
+var worldReady = false;
+function loadAllCities() {
+  var i = 0;
+  function next() {
+    if (i >= CITIES.length) {
+      worldReady = true;
+      destLoadingEl.textContent = "";
+      loadingMsg.style.display = "none";
+      readyPanel.style.display = "flex";
+      resetFlight();
+      return;
+    }
+    var city = CITIES[i];
+    destLoadingEl.textContent = "Loading " + city.name + " map data… (" + (i + 1) + "/" + CITIES.length + ")";
+    loadingMsg.textContent = destLoadingEl.textContent;
+    i++;
+    loadCity(city).then(next);
+  }
+  next();
 }
 
-DESTINATIONS.forEach(function (dest, index) {
+// ---------------------------------------------------------------------------
+// Destination picker — instant once the world is loaded, since every city already
+// exists in the scene; picking one just moves the plane/camera to that city's runway.
+// ---------------------------------------------------------------------------
+var currentCityIndex = 0;
+function selectDestination(index) {
+  currentCityIndex = index;
+  var cards = destSelectEl.querySelectorAll(".dest-card");
+  for (var c = 0; c < cards.length; c++) cards[c].classList.toggle("selected", c === index);
+  if (worldReady) resetFlight();
+}
+
+CITIES.forEach(function (city, index) {
   var card = document.createElement("button");
   card.type = "button";
   card.className = "dest-card" + (index === 0 ? " selected" : "");
   card.innerHTML =
-    '<span class="dest-name">' + dest.name + "</span>" +
-    '<span class="dest-stats">' + dest.subtitle + "</span>";
+    '<span class="dest-name">' + city.name + "</span>" +
+    '<span class="dest-stats">' + city.subtitle + "</span>";
   card.addEventListener("click", function () { selectDestination(index); });
   destSelectEl.appendChild(card);
 });
@@ -615,23 +715,24 @@ var selectedPresetIndex = 0;
 var plane = buildPlaneMesh(PLANE_PRESETS[selectedPresetIndex]);
 scene.add(plane);
 
+function placeOnRunwayStart(target, runway) {
+  var inset = Math.min(30, runway.halfLength * 0.4);
+  var startAlong = -runway.halfLength + inset;
+  target.position.set(runway.cx + runway.dirX * startAlong, 0.9, runway.cz + runway.dirZ * startAlong);
+  target.rotation.set(0, Math.atan2(-runway.dirX, -runway.dirZ), 0);
+}
+
 function selectPreset(index) {
   selectedPresetIndex = index;
   scene.remove(plane);
   plane = buildPlaneMesh(PLANE_PRESETS[index]);
   scene.add(plane);
-  if (RUNWAY) placeOnRunwayStart(plane);
+  var city = CITIES[currentCityIndex];
+  if (city.runway) placeOnRunwayStart(plane, city.runway);
   var cards = planeSelectEl.querySelectorAll(".plane-card");
   for (var i = 0; i < cards.length; i++) {
     cards[i].classList.toggle("selected", i === index);
   }
-}
-
-function placeOnRunwayStart(target) {
-  var inset = Math.min(30, RUNWAY.halfLength * 0.4);
-  var startAlong = -RUNWAY.halfLength + inset;
-  target.position.set(RUNWAY.cx + RUNWAY.dirX * startAlong, 0.9, RUNWAY.cz + RUNWAY.dirZ * startAlong);
-  target.rotation.set(0, Math.atan2(-RUNWAY.dirX, -RUNWAY.dirZ), 0);
 }
 
 PLANE_PRESETS.forEach(function (preset, index) {
@@ -650,18 +751,19 @@ var camPos = new THREE.Vector3();
 var camLook = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
-// Rings — collectible checkpoints
+// Rings — collectible checkpoints, scattered across the whole world (including over
+// open water) to encourage flying between cities, not just around one.
 // ---------------------------------------------------------------------------
-var RING_COUNT = 10;
+var RING_COUNT = 18;
 var RING_RADIUS = 9;
 var rings = [];
 var ringsGroup = new THREE.Group();
 scene.add(ringsGroup);
 
 function placeRing(ring) {
-  var x = (Math.random() * 2 - 1) * (WORLD_HALF - 40);
-  var z = (Math.random() * 2 - 1) * (WORLD_HALF - 40);
-  var y = 22 + Math.random() * 90;
+  var x = WORLD_MIN_X + Math.random() * (WORLD_MAX_X - WORLD_MIN_X);
+  var z = WORLD_MIN_Z + Math.random() * (WORLD_MAX_Z - WORLD_MIN_Z);
+  var y = 22 + Math.random() * 110;
   ring.mesh.position.set(x, y, z);
   ring.mesh.rotation.set(0, Math.random() * Math.PI * 2, Math.PI / 2 + (Math.random() - 0.5) * 0.6);
   ring.normal = new THREE.Vector3(0, 0, 1).applyQuaternion(ring.mesh.quaternion).normalize();
@@ -941,8 +1043,9 @@ function updateCrashEffects(dt) {
 }
 
 function resetFlight() {
+  var city = CITIES[currentCityIndex];
   stats = PLANE_PRESETS[selectedPresetIndex];
-  placeOnRunwayStart(plane);
+  placeOnRunwayStart(plane, city.runway);
   plane.visible = true;
   yaw = plane.rotation.y;
   pitch = 0;
@@ -1059,13 +1162,18 @@ function updateFlight(dt) {
 
     if (plane.position.y > CEILING_Y) plane.position.y = CEILING_Y;
 
-    // You can land anywhere, not just the runway — only speed/attitude/sink-rate need to be
-    // safe. This must live here, inside the airborne branch, using THIS frame's freshly
-    // computed vertSpeed: checking it after the grounded/airborne if-else (as a shared
-    // `!grounded` check) used to also fire on the very same frame a takeoff just happened,
-    // reading vertSpeed's stale initial value of 0 (which reads as "safe") and immediately
-    // snapping the plane back down — so it could never actually leave the ground.
+    // You can land anywhere over land, not just the runway — only speed/attitude/sink-rate
+    // need to be safe, and you need to actually be over a city (not open ocean). This must
+    // live here, inside the airborne branch, using THIS frame's freshly computed vertSpeed:
+    // checking it after the grounded/airborne if-else (as a shared `!grounded` check) used
+    // to also fire on the very same frame a takeoff just happened, reading vertSpeed's stale
+    // initial value of 0 (which reads as "safe") and immediately snapping the plane back
+    // down — so it could never actually leave the ground.
     if (plane.position.y <= GROUND_MIN_Y && vertSpeed <= 3) {
+      var overLand = isOverAnyCityLand(plane.position.x, plane.position.z);
+      if (!overLand) {
+        return crash("Splashed down in the ocean!");
+      }
       var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
       var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
       var safeSink = vertSpeed > -16;
@@ -1089,9 +1197,8 @@ function updateFlight(dt) {
     }
   }
 
-  var half = WORLD_HALF + 30;
-  plane.position.x = Math.max(-half, Math.min(half, plane.position.x));
-  plane.position.z = Math.max(-half, Math.min(half, plane.position.z));
+  plane.position.x = Math.max(WORLD_MIN_X, Math.min(WORLD_MAX_X, plane.position.x));
+  plane.position.z = Math.max(WORLD_MIN_Z, Math.min(WORLD_MAX_Z, plane.position.z));
 
   if (isCollidingWithBuilding(plane.position.x, plane.position.y, plane.position.z)) {
     return crash("Crashed!");
@@ -1150,6 +1257,9 @@ function loop(ts) {
   var dt = Math.min(0.05, (ts - lastTime) / 1000);
   lastTime = ts;
 
+  oceanTexture.offset.x = (ts * 0.000012) % 1;
+  oceanTexture.offset.y = (ts * 0.000008) % 1;
+
   if (state === "playing") {
     updateFlight(dt);
   } else if (crashCamTimer > 0) {
@@ -1164,8 +1274,9 @@ function loop(ts) {
     }
     camera.position.set(crashCamTarget.x - 14 + shakeX, crashCamTarget.y + 8 + shakeY, crashCamTarget.z + 14 + shakeZ);
     camera.lookAt(crashCamTarget.x, crashCamTarget.y + 1, crashCamTarget.z);
-  } else if (worldReady && RUNWAY) {
-    camera.position.set(RUNWAY.cx - RUNWAY.dirX * (RUNWAY.halfLength + 30), 22, RUNWAY.cz - RUNWAY.dirZ * (RUNWAY.halfLength + 30));
+  } else if (worldReady) {
+    var runway = CITIES[currentCityIndex].runway;
+    camera.position.set(runway.cx - runway.dirX * (runway.halfLength + 30), 22, runway.cz - runway.dirZ * (runway.halfLength + 30));
     camera.lookAt(plane.position.x, 6, plane.position.z);
   }
 
@@ -1197,5 +1308,5 @@ startBtn.addEventListener("click", function (e) {
 });
 
 resize();
-loadDestination(0);
+loadAllCities();
 requestAnimationFrame(loop);
