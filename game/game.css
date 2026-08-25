@@ -79,6 +79,14 @@ html, body {
   opacity: 1;
 }
 
+#flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 214, 140, 0.95) 0%, rgba(255, 90, 20, 0.55) 55%, rgba(255, 90, 20, 0) 100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
 #overlay {
   position: absolute;
   inset: 0;

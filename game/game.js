@@ -20,6 +20,7 @@ var overlayMsg = document.getElementById("overlay-msg");
 var planeSelectEl = document.getElementById("plane-select");
 var startBtn = document.getElementById("start-btn");
 var toastEl = document.getElementById("toast");
+var flashEl = document.getElementById("flash");
 var joystickBase = document.getElementById("joystick-base");
 var joystickKnob = document.getElementById("joystick-knob");
 var boostBtn = document.getElementById("boost-btn");
@@ -600,9 +601,196 @@ var LANDING_MAX_TILT = 0.35;
 var stats; // active plane's tuning, set on start
 var airborneElapsed = 0; // guards against rapidly re-triggering the landing bonus by skipping/bouncing
 
+// ---------------------------------------------------------------------------
+// Crash effects — fire burst, smoke, flying debris, screen flash + camera shake.
+// ---------------------------------------------------------------------------
+function makeParticleTexture() {
+  var size = 64;
+  var c = document.createElement("canvas");
+  c.width = c.height = size;
+  var g = c.getContext("2d");
+  var grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.4, "rgba(255,196,80,0.9)");
+  grad.addColorStop(1, "rgba(255,80,0,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(c);
+}
+var particleTexture = makeParticleTexture();
+
+var fireBursts = []; // { points, velocities, age, maxAge }
+var smokePuffs = []; // { mesh, vel, age, maxAge }
+var debrisPieces = []; // { mesh, vel, angVel, age, maxAge }
+
+function clearCrashEffects() {
+  fireBursts.forEach(function (fb) {
+    scene.remove(fb.points);
+    fb.points.geometry.dispose();
+    fb.points.material.dispose();
+  });
+  fireBursts.length = 0;
+  smokePuffs.forEach(function (sp) {
+    scene.remove(sp.mesh);
+    sp.mesh.geometry.dispose();
+    sp.mesh.material.dispose();
+  });
+  smokePuffs.length = 0;
+  debrisPieces.forEach(function (db) {
+    scene.remove(db.mesh);
+    db.mesh.geometry.dispose();
+    db.mesh.material.dispose();
+  });
+  debrisPieces.length = 0;
+}
+
+var crashCamTarget = new THREE.Vector3();
+var crashCamTimer = 0;
+var shakeTimer = 0;
+var SHAKE_DURATION = 0.5;
+
+function triggerCrashEffect(position) {
+  var count = 60;
+  var positions = new Float32Array(count * 3);
+  var velocities = [];
+  for (var i = 0; i < count; i++) {
+    positions[i * 3] = position.x;
+    positions[i * 3 + 1] = position.y + 0.5;
+    positions[i * 3 + 2] = position.z;
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.random() * Math.PI - Math.PI / 2;
+    var burstSpeed = 6 + Math.random() * 14;
+    velocities.push(
+      new THREE.Vector3(
+        Math.cos(theta) * Math.cos(phi) * burstSpeed,
+        Math.abs(Math.sin(phi)) * burstSpeed + 4,
+        Math.sin(theta) * Math.cos(phi) * burstSpeed
+      )
+    );
+  }
+  var geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  var mat = new THREE.PointsMaterial({
+    size: 3.2,
+    map: particleTexture,
+    transparent: true,
+    opacity: 1,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+  var points = new THREE.Points(geom, mat);
+  scene.add(points);
+  fireBursts.push({ points: points, velocities: velocities, age: 0, maxAge: 1.1 });
+
+  for (var s = 0; s < 5; s++) {
+    var smokeMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1.4 + Math.random(), 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0x2a2a2a, transparent: true, opacity: 0.65 })
+    );
+    smokeMesh.position.copy(position).add(new THREE.Vector3((Math.random() - 0.5) * 3, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 3));
+    scene.add(smokeMesh);
+    smokePuffs.push({
+      mesh: smokeMesh,
+      vel: new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 3, (Math.random() - 0.5) * 3),
+      age: 0,
+      maxAge: 1.8,
+    });
+  }
+
+  var debrisColors = [0x1c1f24, 0x3a3d42, 0xb8321f];
+  for (var d = 0; d < 7; d++) {
+    var piece = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4 + Math.random() * 0.6, 0.3 + Math.random() * 0.4, 0.4 + Math.random() * 0.6),
+      new THREE.MeshStandardMaterial({ color: debrisColors[d % debrisColors.length], roughness: 0.75 })
+    );
+    piece.position.copy(position);
+    scene.add(piece);
+    var debrisTheta = Math.random() * Math.PI * 2;
+    var debrisSpeed = 5 + Math.random() * 10;
+    debrisPieces.push({
+      mesh: piece,
+      vel: new THREE.Vector3(Math.cos(debrisTheta) * debrisSpeed, 6 + Math.random() * 8, Math.sin(debrisTheta) * debrisSpeed),
+      angVel: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10),
+      age: 0,
+      maxAge: 2.2,
+    });
+  }
+
+  flashEl.style.transition = "none";
+  flashEl.style.opacity = "1";
+  requestAnimationFrame(function () {
+    flashEl.style.transition = "opacity 0.5s ease";
+    flashEl.style.opacity = "0";
+  });
+
+  crashCamTarget.copy(position);
+  crashCamTimer = 1.4;
+  shakeTimer = SHAKE_DURATION;
+}
+
+function updateCrashEffects(dt) {
+  for (var i = fireBursts.length - 1; i >= 0; i--) {
+    var fb = fireBursts[i];
+    fb.age += dt;
+    var posAttr = fb.points.geometry.attributes.position;
+    for (var j = 0; j < fb.velocities.length; j++) {
+      var v = fb.velocities[j];
+      v.y -= 18 * dt;
+      posAttr.array[j * 3] += v.x * dt;
+      posAttr.array[j * 3 + 1] += v.y * dt;
+      posAttr.array[j * 3 + 2] += v.z * dt;
+    }
+    posAttr.needsUpdate = true;
+    fb.points.material.opacity = Math.max(0, 1 - fb.age / fb.maxAge);
+    if (fb.age >= fb.maxAge) {
+      scene.remove(fb.points);
+      fb.points.geometry.dispose();
+      fb.points.material.dispose();
+      fireBursts.splice(i, 1);
+    }
+  }
+
+  for (var s = smokePuffs.length - 1; s >= 0; s--) {
+    var sp = smokePuffs[s];
+    sp.age += dt;
+    sp.vel.multiplyScalar(0.97);
+    sp.mesh.position.addScaledVector(sp.vel, dt);
+    sp.mesh.scale.setScalar(1 + sp.age * 1.6);
+    sp.mesh.material.opacity = Math.max(0, 0.65 * (1 - sp.age / sp.maxAge));
+    if (sp.age >= sp.maxAge) {
+      scene.remove(sp.mesh);
+      sp.mesh.geometry.dispose();
+      sp.mesh.material.dispose();
+      smokePuffs.splice(s, 1);
+    }
+  }
+
+  for (var d = debrisPieces.length - 1; d >= 0; d--) {
+    var db = debrisPieces[d];
+    db.age += dt;
+    db.vel.y -= 22 * dt;
+    db.mesh.position.addScaledVector(db.vel, dt);
+    db.mesh.rotation.x += db.angVel.x * dt;
+    db.mesh.rotation.y += db.angVel.y * dt;
+    db.mesh.rotation.z += db.angVel.z * dt;
+    if (db.mesh.position.y <= 0.2) {
+      db.mesh.position.y = 0.2;
+      db.vel.set(0, 0, 0);
+    }
+    if (db.age >= db.maxAge) {
+      scene.remove(db.mesh);
+      db.mesh.geometry.dispose();
+      db.mesh.material.dispose();
+      debrisPieces.splice(d, 1);
+    }
+  }
+}
+
 function resetFlight() {
   stats = PLANE_PRESETS[selectedPresetIndex];
   plane.position.set(RUNWAY.minX + 15, GROUND_Y, 0);
+  plane.visible = true;
   yaw = -Math.PI / 2; // faces +X, down the runway
   pitch = 0;
   roll = 0;
@@ -614,6 +802,9 @@ function resetFlight() {
   for (var i = 0; i < rings.length; i++) placeRing(rings[i]);
   camPos.copy(plane.position);
   camLook.copy(plane.position);
+  clearCrashEffects();
+  crashCamTimer = 0;
+  shakeTimer = 0;
 }
 resetFlight();
 
@@ -626,6 +817,7 @@ function showToast(text) {
   toastEl.classList.add("show");
   toastTimer = 1.6;
 }
+
 
 // Real footprints aren't axis-aligned rectangles, so collision does a proper
 // point-in-polygon test (buffered by roughly the plane's radius) against the actual
@@ -780,6 +972,8 @@ function updateFlight(dt) {
 
 function crash(reason) {
   state = "over";
+  triggerCrashEffect(plane.position);
+  plane.visible = false;
   if (score > best) {
     best = score;
     localStorage.setItem(STORAGE_KEY, String(best));
@@ -787,9 +981,12 @@ function crash(reason) {
   }
   overlayMsg.innerHTML = reason + " Score: " + score + "<br />Best: " + best;
   startBtn.textContent = "↻ Retry";
-  overlay.style.display = "flex";
   loadingMsg.style.display = "none";
   readyPanel.style.display = "flex";
+  // hold off on the game-over menu so the crash is actually visible first
+  setTimeout(function () {
+    overlay.style.display = "flex";
+  }, 900);
 }
 
 // ---------------------------------------------------------------------------
@@ -803,10 +1000,24 @@ function loop(ts) {
 
   if (state === "playing") {
     updateFlight(dt);
+  } else if (crashCamTimer > 0) {
+    crashCamTimer -= dt;
+    var shakeX = 0, shakeY = 0, shakeZ = 0;
+    if (shakeTimer > 0) {
+      shakeTimer -= dt;
+      var shakeMag = 1.6 * Math.max(0, shakeTimer / SHAKE_DURATION);
+      shakeX = (Math.random() - 0.5) * shakeMag;
+      shakeY = (Math.random() - 0.5) * shakeMag;
+      shakeZ = (Math.random() - 0.5) * shakeMag;
+    }
+    camera.position.set(crashCamTarget.x - 14 + shakeX, crashCamTarget.y + 8 + shakeY, crashCamTarget.z + 14 + shakeZ);
+    camera.lookAt(crashCamTarget.x, crashCamTarget.y + 1, crashCamTarget.z);
   } else if (worldReady) {
     camera.position.set(RUNWAY.minX - 30, 22, 40);
     camera.lookAt(plane.position.x, 6, plane.position.z);
   }
+
+  updateCrashEffects(dt);
 
   if (toastTimer > 0) {
     toastTimer -= dt;
