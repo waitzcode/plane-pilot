@@ -1073,11 +1073,23 @@ var keys = {};
 // guards against the OS's key-repeat re-firing keydown while held).
 var gearDown = true;
 var flapsDown = false;
-// Throttle gear (1-5) caps top speed -- it auto-upshifts as a baseline (so mobile/no-
-// keyboard play is never stuck at gear 1), but a manual 1-5 press jumps straight to that
-// gear on demand: instant full power, or a deliberate downshift to help brake for landing.
-var DIGIT_GEAR = { Digit1: 1, Digit2: 2, Digit3: 3, Digit4: 4, Digit5: 5 };
-var currentGear = 1;
+// Engine speed is a real-ish RPM value (idle to redline) that caps top speed -- it
+// auto-advances as a baseline (so mobile/no-keyboard play is never stuck at idle), but a
+// manual 1-5 press sets a target RPM the engine spools toward over time rather than
+// snapping instantly, the way a real throttle lever doesn't change engine speed the
+// instant you move it.
+var IDLE_RPM = 700;
+var MAX_RPM = 2700;
+var DIGIT_RPM = {
+  Digit1: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.2,
+  Digit2: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.4,
+  Digit3: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.6,
+  Digit4: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.8,
+  Digit5: MAX_RPM,
+};
+var targetRPM = DIGIT_RPM.Digit1;
+var currentRPM = IDLE_RPM;
+var RPM_SPOOL_RATE = 1.1; // how fast the engine chases targetRPM -- lower = laggier
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
   if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
@@ -1090,10 +1102,9 @@ window.addEventListener("keydown", function (e) {
     flapsDown = !flapsDown;
     flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
     showToast(flapsDown ? "Flaps down" : "Flaps up");
-  } else if (DIGIT_GEAR[e.code]) {
-    currentGear = DIGIT_GEAR[e.code];
-    gearShiftEl.textContent = "SHIFT " + currentGear + "/5";
-    showToast("Shift: gear " + currentGear);
+  } else if (DIGIT_RPM[e.code]) {
+    targetRPM = DIGIT_RPM[e.code];
+    showToast("Target RPM: " + Math.round(targetRPM));
   }
 });
 window.addEventListener("keyup", function (e) {
@@ -1362,10 +1373,11 @@ function resetFlight() {
   grounded = true;
   gearDown = true;
   flapsDown = false;
-  currentGear = 1;
+  targetRPM = DIGIT_RPM.Digit1;
+  currentRPM = IDLE_RPM;
   gearStatusEl.textContent = "GEAR DOWN";
   flapsStatusEl.textContent = "FLAPS UP";
-  gearShiftEl.textContent = "SHIFT 1/5";
+  gearShiftEl.textContent = "RPM " + Math.round(currentRPM);
   score = 0;
   scoreEl.textContent = "Score: 0";
   statusEl.textContent = "ON RUNWAY";
@@ -1433,15 +1445,17 @@ function updateFlight(dt) {
   var wantsBoost = boosting || !!keys["Space"];
   var vertSpeed = 0;
 
-  // Throttle gear caps top speed at gear/5 of boostSpeed. Auto-upshifts once speed reaches
-  // the current cap so play never gets stuck at gear 1 (mobile has no way to shift), but a
-  // manual 1-5 press jumps straight to that gear immediately.
-  var gearCap = stats.boostSpeed * (currentGear / 5);
-  if (currentGear < 5 && speed >= gearCap * 0.95) {
-    currentGear++;
-    gearCap = stats.boostSpeed * (currentGear / 5);
-    gearShiftEl.textContent = "SHIFT " + currentGear + "/5";
+  // Engine RPM caps top speed at (currentRPM/MAX_RPM) of boostSpeed. currentRPM spools
+  // toward targetRPM over time rather than snapping, so shifting feels like a real engine
+  // winding up/down. Auto-advances targetRPM once speed pins at the current cap so play
+  // never gets stuck at idle (mobile has no way to shift), but a manual 1-5 press sets a
+  // new target immediately -- the spool lag is what makes it not instant.
+  if (targetRPM < MAX_RPM && speed >= stats.boostSpeed * (currentRPM / MAX_RPM) * 0.95) {
+    targetRPM = Math.min(MAX_RPM, targetRPM + (MAX_RPM - IDLE_RPM) * 0.2);
   }
+  currentRPM += (targetRPM - currentRPM) * Math.min(1, RPM_SPOOL_RATE * dt);
+  gearShiftEl.textContent = "RPM " + Math.round(currentRPM);
+  var gearCap = stats.boostSpeed * (currentRPM / MAX_RPM);
 
   if (grounded) {
     // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed.
