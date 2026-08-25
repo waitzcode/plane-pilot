@@ -16,6 +16,8 @@ var bestEl = document.getElementById("best");
 var statusEl = document.getElementById("status");
 var altEl = document.getElementById("alt");
 var spdEl = document.getElementById("spd");
+var gearStatusEl = document.getElementById("gear-status");
+var flapsStatusEl = document.getElementById("flaps-status");
 var overlay = document.getElementById("overlay");
 var loadingMsg = document.getElementById("loading-msg");
 var readyPanel = document.getElementById("ready-panel");
@@ -145,13 +147,15 @@ WORLD_MIN_Z -= WORLD_MARGIN; WORLD_MAX_Z += WORLD_MARGIN;
 // Runway — an oriented rectangle (center, heading, length, width) so a real runway's
 // actual position/orientation can be used directly instead of a fixed axis-aligned box.
 // ---------------------------------------------------------------------------
-var RUNWAY_LENGTH_CAP = 520; // real runways run 2.5-3.5km; capped to an arcade-appropriate strip
-
+// Runways are sized relative to each city's own worldHalf (rather than a fixed cap) so a
+// "huge" runway still fits comfortably on that city's landmass instead of poking out over
+// the ocean -- real runways at Tokyo/LA (worldHalf 1050) run long enough to hit this cap
+// anyway; the synthetic strips (New York/Paris, worldHalf 460) are sized down to match.
 function makeSyntheticRunway(city) {
   return {
     cx: city.worldOffset.x, cz: city.worldOffset.z,
     dirX: 1, dirZ: 0, normX: 0, normZ: 1,
-    halfLength: 110, halfWidth: 15, meshHeadingY: 0,
+    halfLength: city.worldHalf * 0.7, halfWidth: 45, meshHeadingY: 0,
   };
 }
 
@@ -165,8 +169,8 @@ function runwayFromOsmWay(city, way) {
   var dirX = dx / realLength, dirZ = dz / realLength;
   var width = parseFloat(way.tags && way.tags.width);
   if (!isFinite(width)) width = 45;
-  width = Math.max(20, Math.min(70, width));
-  var halfLength = Math.min(realLength, RUNWAY_LENGTH_CAP) / 2;
+  width = Math.max(60, Math.min(140, width * 1.8));
+  var halfLength = Math.min(realLength, city.worldHalf * 0.85) / 2;
   return {
     cx: (a.x + b.x) / 2, cz: (a.z + b.z) / 2,
     dirX: dirX, dirZ: dirZ, normX: -dirZ, normZ: dirX,
@@ -686,6 +690,19 @@ function buildPlaneMesh(preset) {
   wing.position.set(0, -0.1, 0.1);
   group.add(wing);
 
+  // Flaps: small trailing-edge panels that pivot down when deployed (see updateFlight).
+  var flapMat = new THREE.MeshStandardMaterial({ color: preset.accentColor, roughness: 0.5, metalness: 0.2 });
+  var flapsGroup = new THREE.Group();
+  [-2.6, 2.6].forEach(function (fx) {
+    var pivot = new THREE.Group();
+    pivot.position.set(fx, -0.1, 0.75);
+    var flap = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.55), flapMat);
+    flap.position.set(0, 0, 0.3);
+    pivot.add(flap);
+    flapsGroup.add(pivot);
+  });
+  group.add(flapsGroup);
+
   var tailWing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.15, 0.8), bodyMat);
   tailWing.position.set(0, 0.1, 2.5);
   group.add(tailWing);
@@ -702,14 +719,21 @@ function buildPlaneMesh(preset) {
   group.add(cockpit);
 
   var gearMat = new THREE.MeshStandardMaterial({ color: 0x111722, roughness: 0.6 });
+  var gearGroup = new THREE.Group();
   [[-1.6, -1.6], [1.6, -1.6], [0, 2]].forEach(function (p) {
+    var strut = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.55, 6), gearMat);
+    strut.position.set(p[0], -0.85, p[1]);
+    gearGroup.add(strut);
     var wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.25, 8), gearMat);
     wheel.rotation.z = Math.PI / 2;
     wheel.position.set(p[0], -1.1, p[1]);
-    group.add(wheel);
+    gearGroup.add(wheel);
   });
+  group.add(gearGroup);
 
   group.scale.setScalar(preset.scale);
+  group.userData.gearGroup = gearGroup;
+  group.userData.flapsGroup = flapsGroup;
   return group;
 }
 
@@ -786,9 +810,23 @@ for (var i = 0; i < RING_COUNT; i++) {
 // ---------------------------------------------------------------------------
 var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
 var keys = {};
+// Gear/flaps are toggles, not held controls -- flipped once per physical press (e.repeat
+// guards against the OS's key-repeat re-firing keydown while held).
+var gearDown = true;
+var flapsDown = false;
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
   if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
+  if (state !== "playing" || e.repeat) return;
+  if (e.code === "KeyH") {
+    gearDown = !gearDown;
+    gearStatusEl.textContent = gearDown ? "GEAR DOWN" : "GEAR UP";
+    showToast(gearDown ? "Gear down" : "Gear up");
+  } else if (e.code === "KeyG") {
+    flapsDown = !flapsDown;
+    flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
+    showToast(flapsDown ? "Flaps down" : "Flaps up");
+  }
 });
 window.addEventListener("keyup", function (e) {
   keys[e.code] = false;
@@ -1054,6 +1092,10 @@ function resetFlight() {
   roll = 0;
   speed = 0;
   grounded = true;
+  gearDown = true;
+  flapsDown = false;
+  gearStatusEl.textContent = "GEAR DOWN";
+  flapsStatusEl.textContent = "FLAPS UP";
   score = 0;
   scoreEl.textContent = "Score: 0";
   statusEl.textContent = "ON RUNWAY";
@@ -1139,7 +1181,9 @@ function updateFlight(dt) {
     plane.position.addScaledVector(forwardVec, speed * dt);
     plane.position.y = GROUND_Y;
 
-    if (speed >= stats.takeoffSpeed && throttleUp) {
+    // Flaps shorten the takeoff roll, same as on a real plane.
+    var effectiveTakeoffSpeed = flapsDown ? stats.takeoffSpeed * 0.8 : stats.takeoffSpeed;
+    if (speed >= effectiveTakeoffSpeed && throttleUp) {
       grounded = false;
       airborneElapsed = 0;
       pitch = 0.18;
@@ -1153,7 +1197,11 @@ function updateFlight(dt) {
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
     roll += (yawInput * -0.7 - roll) * 4 * dt;
 
-    var targetSpeed = wantsBoost ? stats.boostSpeed : stats.cruiseSpeed;
+    // Flying with the gear and/or flaps out costs real speed -- the payoff for
+    // remembering to retract them after takeoff (and the reason to extend them again
+    // before landing is a deliberate trade, not free).
+    var dragMult = (gearDown ? 0.8 : 1) * (flapsDown ? 0.65 : 1);
+    var targetSpeed = (wantsBoost ? stats.boostSpeed : stats.cruiseSpeed) * dragMult;
     speed += (targetSpeed - speed) * Math.min(1, dt * 2);
 
     plane.rotation.order = "YXZ";
@@ -1176,10 +1224,15 @@ function updateFlight(dt) {
       if (!overLand) {
         return crash("Splashed down in the ocean!");
       }
-      var safeSpeed = speed <= stats.cruiseSpeed * 1.15;
+      // Flaps lower the stall speed on a real plane, so they widen the safe landing
+      // speed margin here too -- a real tradeoff for the drag penalty they cost in flight.
+      var safeSpeed = speed <= stats.cruiseSpeed * (flapsDown ? 1.5 : 1.15);
       var safeAttitude = Math.abs(pitch) < LANDING_MAX_TILT && Math.abs(roll) < LANDING_MAX_TILT;
       var safeSink = vertSpeed > -16;
 
+      if (!gearDown) {
+        return crash("Gear up! Bellied in!");
+      }
       if (safeSpeed && safeAttitude && safeSink) {
         grounded = true;
         plane.position.y = GROUND_Y;
@@ -1198,6 +1251,11 @@ function updateFlight(dt) {
       }
     }
   }
+
+  plane.userData.gearGroup.visible = gearDown;
+  plane.userData.flapsGroup.children.forEach(function (pivot) {
+    pivot.rotation.x = flapsDown ? 0.6 : 0;
+  });
 
   plane.position.x = Math.max(WORLD_MIN_X, Math.min(WORLD_MAX_X, plane.position.x));
   plane.position.z = Math.max(WORLD_MIN_Z, Math.min(WORLD_MAX_Z, plane.position.z));

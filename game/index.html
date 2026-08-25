@@ -27,6 +27,10 @@
         <span id="alt">ALT 0</span>
         <span id="spd">SPD 0</span>
       </div>
+      <div class="hud-row hud-row-sub">
+        <span id="gear-status">GEAR DOWN</span>
+        <span id="flaps-status">FLAPS UP</span>
+      </div>
     </div>
 
     <div id="toast"></div>
@@ -44,8 +48,10 @@
         <p id="overlay-msg">
           On the runway: hold <kbd>&uarr;</kbd>/<kbd>W</kbd> or <kbd>Space</kbd> to throttle up, keep holding to lift off.<br />
           Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd>, hold <kbd>Space</kbd> to boost in the air.<br />
+          <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
+          <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
           On mobile: drag the joystick up or hold the ▲ button to throttle/take off.<br />
-          Fly through the rings for points. You can land anywhere, not just the runway!
+          Fly through the rings for points. You can land anywhere over land, not just the runway!
         </p>
         <div id="destination-select"></div>
         <div id="dest-loading"></div>
