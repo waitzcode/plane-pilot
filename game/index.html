@@ -47,6 +47,10 @@
       <canvas id="minimap" width="280" height="280"></canvas>
     </div>
 
+    <div id="instrument-panel-wrap">
+      <canvas id="instrument-panel" width="900" height="220"></canvas>
+    </div>
+
     <div id="overlay">
       <h1>SKY RUNNER 3D</h1>
       <p id="loading-msg">Loading real NYC map data&hellip;</p>
@@ -59,6 +63,8 @@
           Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd> in the air (on the runway, &uarr;/&darr; also throttle).<br />
           <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
           <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
+          <kbd>C</kbd> switches between chase camera and the cockpit view, which swaps the text readouts for a real instrument
+          panel — attitude indicator, airspeed, altimeter, heading, and vertical speed.<br />
           On mobile: drag the joystick up to climb, and use the ▲/▼ buttons to raise/lower throttle at any time, in the air included.<br />
           Fly too slow and you'll stall — the nose drops and controls go mushy until you dive to regain speed. Fly too
           fast (especially diving) and you risk overspeed structural failure. Wind drifts you off course in the air, so

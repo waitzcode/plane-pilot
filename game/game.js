@@ -35,6 +35,8 @@ var toastEl = document.getElementById("toast");
 var flashEl = document.getElementById("flash");
 var minimapCanvas = document.getElementById("minimap");
 var minimapCtx = minimapCanvas.getContext("2d");
+var panelCanvas = document.getElementById("instrument-panel");
+var panelCtx = panelCanvas.getContext("2d");
 var joystickBase = document.getElementById("joystick-base");
 var joystickKnob = document.getElementById("joystick-knob");
 var boostBtn = document.getElementById("boost-btn");
@@ -785,6 +787,7 @@ function buildPropPlaneMesh(preset) {
   });
   group.add(gearGroup);
 
+  group.userData.cockpitOffset = new THREE.Vector3(0, 1.05, -0.5);
   group.userData.gearGroup = gearGroup;
   group.userData.flapsGroup = flapsGroup;
   return group;
@@ -891,6 +894,7 @@ function buildJetlinerMesh(preset) {
   });
   group.add(gearGroup);
 
+  group.userData.cockpitOffset = new THREE.Vector3(0, 1.3, -4.8);
   group.userData.gearGroup = gearGroup;
   group.userData.flapsGroup = flapsGroup;
   return group;
@@ -998,6 +1002,7 @@ function buildFighterMesh(preset) {
   });
   group.add(gearGroup);
 
+  group.userData.cockpitOffset = new THREE.Vector3(0, 0.85, -1.4);
   group.userData.gearGroup = gearGroup;
   group.userData.flapsGroup = flapsGroup;
   return group;
@@ -1086,6 +1091,7 @@ var flapsDown = false;
 // path); on the ground, the up/down throttle keys do the same for backward-compatible feel.
 var throttlePercent = 0;
 var THROTTLE_RATE = 65; // %/sec
+var cameraMode = "chase"; // chase | cockpit
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
   if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
@@ -1098,6 +1104,10 @@ window.addEventListener("keydown", function (e) {
     flapsDown = !flapsDown;
     flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
     showToast(flapsDown ? "Flaps down" : "Flaps up");
+  } else if (e.code === "KeyC") {
+    cameraMode = cameraMode === "chase" ? "cockpit" : "chase";
+    document.body.classList.toggle("cockpit-view", cameraMode === "cockpit");
+    showToast(cameraMode === "cockpit" ? "Cockpit view" : "Chase camera");
   }
 });
 window.addEventListener("keyup", function (e) {
@@ -1171,7 +1181,7 @@ throttleDownBtn.addEventListener("pointercancel", function () {
 // ---------------------------------------------------------------------------
 var state = "ready"; // ready | playing | over
 var grounded = true;
-var yaw, pitch, roll, speed, score;
+var yaw, pitch, roll, speed, score, vertSpeed;
 var TURN_RATE_BASE = 1.6;
 var MAX_PITCH = Math.PI / 3;
 var GROUND_Y = 0.9;
@@ -1467,7 +1477,7 @@ function updateFlight(dt) {
   var yawInput = Math.max(-1, Math.min(1, kbYaw + -joystickVec.x));
   var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch + -joystickVec.y));
   var wantsBoost = boosting || !!keys["Space"];
-  var vertSpeed = 0;
+  vertSpeed = 0;
 
   // The throttle is a direct percentage (0-100), held wherever you leave it -- like an
   // actual throttle lever, not a target something else chases. +/- move it in either
@@ -1631,12 +1641,23 @@ function updateFlight(dt) {
   hdgEl.textContent = "HDG " + String(Math.round(headingDeg)).padStart(3, "0") + "°";
   vsEl.textContent = "VS " + (vertSpeed >= 0 ? "+" : "") + Math.round(vertSpeed * M_TO_FEET * 60) + " FPM";
 
-  var behind = forwardVec.clone().multiplyScalar(-18);
-  var desiredCamPos = plane.position.clone().add(behind).add(new THREE.Vector3(0, 6, 0));
-  camPos.lerp(desiredCamPos, Math.min(1, dt * 5));
-  camLook.lerp(plane.position, Math.min(1, dt * 7));
-  camera.position.copy(camPos);
-  camera.lookAt(camLook);
+  if (cameraMode === "cockpit") {
+    // Rigidly attached to the plane's actual orientation (not a lookAt), so the horizon
+    // visibly tilts with bank/pitch, same as sitting in a real cockpit.
+    plane.updateMatrixWorld(true);
+    var eyeLocal = plane.userData.cockpitOffset || new THREE.Vector3(0, 0.8, -0.5);
+    camera.position.copy(plane.localToWorld(eyeLocal.clone()));
+    camera.quaternion.copy(plane.quaternion);
+  } else {
+    var behind = forwardVec.clone().multiplyScalar(-18);
+    var desiredCamPos = plane.position.clone().add(behind).add(new THREE.Vector3(0, 6, 0));
+    camPos.lerp(desiredCamPos, Math.min(1, dt * 5));
+    camLook.lerp(plane.position, Math.min(1, dt * 7));
+    camera.position.copy(camPos);
+    camera.lookAt(camLook);
+  }
+
+  if (cameraMode === "cockpit") drawInstrumentPanel();
 }
 
 function crash(reason) {
@@ -1715,6 +1736,218 @@ function drawMinimap() {
     minimapCtx.fill();
     minimapCtx.restore();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Instrument panel — drawn only in cockpit view, replacing the text HUD readouts
+// with real analog-style gauges: heading, airspeed, attitude indicator (artificial
+// horizon), altimeter, and vertical speed, plus a small annunciator strip.
+// ---------------------------------------------------------------------------
+function gaugeBezel(cx, cy, r, label) {
+  var ctx = panelCtx;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#1a1f29";
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#3a4250";
+  ctx.stroke();
+  ctx.fillStyle = "#8a94a6";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText(label, cx, cy - r + 16);
+}
+
+// A simple wrap-around needle gauge: fraction 0-1 maps to a full clockwise sweep from
+// the top. Good for quantities that only increase (airspeed) or naturally wrap (a
+// single-needle altimeter, same as a real one's short/fast hand).
+function gaugeNeedle(cx, cy, r, fraction, color) {
+  var ctx = panelCtx;
+  fraction = Math.max(0, Math.min(1, fraction));
+  var angle = fraction * Math.PI * 2;
+  ctx.strokeStyle = "rgba(138,148,166,0.5)";
+  ctx.lineWidth = 1.5;
+  for (var i = 0; i < 8; i++) {
+    var a = (i / 8) * Math.PI * 2;
+    var x1 = cx + Math.sin(a) * (r - 9), y1 = cy - Math.cos(a) * (r - 9);
+    var x2 = cx + Math.sin(a) * (r - 3), y2 = cy - Math.cos(a) * (r - 3);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.sin(angle) * (r - 18), cy - Math.cos(angle) * (r - 18));
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function gaugeDigital(cx, cy, r, text, color) {
+  var ctx = panelCtx;
+  ctx.fillStyle = color || "#e6ecff";
+  ctx.font = "bold 15px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, cy + r * 0.52);
+}
+
+function drawHeadingGauge(cx, cy, r) {
+  var ctx = panelCtx;
+  gaugeBezel(cx, cy, r, "HDG");
+  var headingDeg = (((-yaw * 180) / Math.PI) % 360 + 360) % 360;
+  ctx.fillStyle = "#cfd8e3";
+  ctx.font = "bold 13px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(function (m) {
+    var rad = (m[1] * Math.PI) / 180;
+    ctx.fillText(m[0], cx + Math.sin(rad) * (r - 16), cy - Math.cos(rad) * (r - 16));
+  });
+  ctx.strokeStyle = "rgba(207,216,227,0.5)";
+  ctx.lineWidth = 1.5;
+  for (var deg = 0; deg < 360; deg += 30) {
+    var rad2 = (deg * Math.PI) / 180;
+    var x1 = cx + Math.sin(rad2) * (r - 6), y1 = cy - Math.cos(rad2) * (r - 6);
+    var x2 = cx + Math.sin(rad2) * (r - 2), y2 = cy - Math.cos(rad2) * (r - 2);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  var hr = (headingDeg * Math.PI) / 180;
+  ctx.strokeStyle = "#ffd400";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.sin(hr) * (r - 24), cy - Math.cos(hr) * (r - 24));
+  ctx.stroke();
+  gaugeDigital(cx, cy, r, String(Math.round(headingDeg)).padStart(3, "0") + "°", "#ffd400");
+}
+
+function drawAttitudeGauge(cx, cy, r) {
+  var ctx = panelCtx;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  // horizon tilts with roll and shifts with pitch -- the pixels-per-radian scale is
+  // arbitrary (there's no real "field of view" for this instrument), just tuned so a
+  // moderate climb/dive visibly moves the line without pinning it at extreme pitch.
+  ctx.translate(cx, cy);
+  ctx.rotate(roll);
+  var pitchOffset = pitch * 120;
+  ctx.fillStyle = "#3d7bc4";
+  ctx.fillRect(-r * 2, -r * 2 + pitchOffset, r * 4, r * 2);
+  ctx.fillStyle = "#7a5230";
+  ctx.fillRect(-r * 2, pitchOffset, r * 4, r * 2);
+  ctx.strokeStyle = "#e6ecff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-r * 2, pitchOffset);
+  ctx.lineTo(r * 2, pitchOffset);
+  ctx.stroke();
+  ctx.restore();
+  // fixed aircraft symbol (doesn't rotate with the horizon -- it represents the plane's
+  // own nose, so the horizon moves relative to it, not the other way around)
+  ctx.strokeStyle = "#ffd400";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx - 26, cy);
+  ctx.lineTo(cx - 8, cy);
+  ctx.moveTo(cx + 8, cy);
+  ctx.lineTo(cx + 26, cy);
+  ctx.stroke();
+  ctx.fillStyle = "#ffd400";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#0a1226";
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#8a94a6";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("ATT", cx, cy - r + 16);
+}
+
+function drawAirspeedGauge(cx, cy, r) {
+  var maxKt = Math.max(120, stats.boostSpeed * MPS_TO_KNOTS * 1.15);
+  var iasKt = speed * MPS_TO_KNOTS;
+  gaugeBezel(cx, cy, r, "IAS");
+  gaugeNeedle(cx, cy, r, iasKt / maxKt, "#00f0ff");
+  gaugeDigital(cx, cy, r, Math.round(iasKt) + " KT", "#00f0ff");
+}
+
+function drawAltimeterGauge(cx, cy, r) {
+  var altFt = plane.position.y * M_TO_FEET;
+  gaugeBezel(cx, cy, r, "ALT");
+  // single needle wraps every 1000ft, same as the fast hand on a real 3-needle altimeter
+  // -- the digital readout resolves which thousand you're actually in.
+  gaugeNeedle(cx, cy, r, (altFt % 1000) / 1000, "#7bff5a");
+  gaugeDigital(cx, cy, r, Math.round(altFt) + " FT", "#7bff5a");
+}
+
+function drawVsiGauge(cx, cy, r) {
+  var ctx = panelCtx;
+  var vsFpm = vertSpeed * M_TO_FEET * 60;
+  var maxVs = 2500;
+  var f = Math.max(-1, Math.min(1, vsFpm / maxVs));
+  gaugeBezel(cx, cy, r, "VS");
+  // half-circle sweep: max descent at left (-90deg), level at top, max climb at right
+  // (+90deg) -- reads intuitively left-down / right-up without a full-circle wraparound.
+  ctx.strokeStyle = "rgba(138,148,166,0.5)";
+  ctx.lineWidth = 1.5;
+  [-1, -0.5, 0, 0.5, 1].forEach(function (t) {
+    var a = (-90 + t * 90) * (Math.PI / 180);
+    var x1 = cx + Math.sin(a) * (r - 9), y1 = cy - Math.cos(a) * (r - 9);
+    var x2 = cx + Math.sin(a) * (r - 3), y2 = cy - Math.cos(a) * (r - 3);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  });
+  var angle = (-90 + f * 90) * (Math.PI / 180);
+  ctx.strokeStyle = "#ff7a1a";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.sin(angle) * (r - 18), cy - Math.cos(angle) * (r - 18));
+  ctx.stroke();
+  gaugeDigital(cx, cy, r, (vsFpm >= 0 ? "+" : "") + Math.round(vsFpm) + " FPM", "#ff7a1a");
+}
+
+function drawInstrumentPanel() {
+  var w = panelCanvas.width, h = panelCanvas.height;
+  var ctx = panelCtx;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#12161d";
+  ctx.fillRect(0, 0, w, h);
+
+  var cy = 95;
+  drawHeadingGauge(90, cy, 78);
+  drawAirspeedGauge(270, cy, 78);
+  drawAttitudeGauge(450, cy, 92);
+  drawAltimeterGauge(630, cy, 78);
+  drawVsiGauge(810, cy, 78);
+
+  ctx.font = "bold 15px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = gearDown ? "#7bff5a" : "#ff5a3c";
+  ctx.fillText(gearDown ? "GEAR DOWN" : "GEAR UP", 180, 195);
+  ctx.fillStyle = flapsDown ? "#ffd400" : "#5a6270";
+  ctx.fillText(flapsDown ? "FLAPS DOWN" : "FLAPS UP", 450, 195);
+  ctx.fillStyle = "#00f0ff";
+  ctx.fillText("THROTTLE " + Math.round(throttlePercent) + "%", 720, 195);
 }
 
 // ---------------------------------------------------------------------------
