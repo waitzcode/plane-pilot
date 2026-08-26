@@ -38,6 +38,7 @@ var minimapCtx = minimapCanvas.getContext("2d");
 var joystickBase = document.getElementById("joystick-base");
 var joystickKnob = document.getElementById("joystick-knob");
 var boostBtn = document.getElementById("boost-btn");
+var throttleDownBtn = document.getElementById("throttle-down-btn");
 
 var STORAGE_KEY = "sky-runner-3d-best";
 var best = Number(localStorage.getItem(STORAGE_KEY)) || 0;
@@ -1073,7 +1074,7 @@ for (var i = 0; i < RING_COUNT; i++) {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
-var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Equal", "Minus"];
+var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Equal", "Minus", "PageUp", "PageDown"];
 var keys = {};
 // Gear/flaps are toggles, not held controls -- flipped once per physical press (e.repeat
 // guards against the OS's key-repeat re-firing keydown while held).
@@ -1151,6 +1152,18 @@ boostBtn.addEventListener("pointerup", function () {
 });
 boostBtn.addEventListener("pointercancel", function () {
   boosting = false;
+});
+
+var throttlingDown = false;
+throttleDownBtn.addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  throttlingDown = true;
+});
+throttleDownBtn.addEventListener("pointerup", function () {
+  throttlingDown = false;
+});
+throttleDownBtn.addEventListener("pointercancel", function () {
+  throttlingDown = false;
 });
 
 // ---------------------------------------------------------------------------
@@ -1461,9 +1474,10 @@ function updateFlight(dt) {
   // state; Space/the boost button (and, on the ground only, the up/down throttle keys,
   // kept for backward-compatible feel) push it toward full for the no-fine-control path.
   var throttleAdjust = 0;
-  if (keys["Equal"]) throttleAdjust = 1;
-  if (keys["Minus"]) throttleAdjust = -1;
+  if (keys["Equal"] || keys["PageUp"]) throttleAdjust = 1;
+  if (keys["Minus"] || keys["PageDown"]) throttleAdjust = -1;
   if (wantsBoost) throttleAdjust = 1;
+  if (throttlingDown) throttleAdjust = -1;
   if (grounded) {
     if (throttlePitchInput > 0) throttleAdjust = 1;
     else if (throttlePitchInput < 0) throttleAdjust = -1;

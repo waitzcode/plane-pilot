@@ -53,12 +53,13 @@
 
       <div id="ready-panel" style="display:none">
         <p id="overlay-msg">
-          <kbd>+</kbd>/<kbd>-</kbd> set your throttle directly, like a real throttle lever — it holds wherever you leave it.
-          On the runway, <kbd>&uarr;</kbd>/<kbd>W</kbd> and <kbd>Space</kbd> also push it toward full; keep the throttle up until you lift off.<br />
-          Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd> in the air, hold <kbd>Space</kbd> for a quick throttle-up.<br />
+          <kbd>Page&uarr;</kbd>/<kbd>Page&darr;</kbd> (or <kbd>+</kbd>/<kbd>-</kbd>) set your throttle directly, like a real throttle lever
+          — this works the whole flight, not just on the runway, and it holds wherever you leave it.
+          <kbd>Space</kbd> is a quick shove toward full throttle if you don't want to fine-tune it.<br />
+          Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd> in the air (on the runway, &uarr;/&darr; also throttle).<br />
           <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
           <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
-          On mobile: drag the joystick up or hold the ▲ button to throttle/take off.<br />
+          On mobile: drag the joystick up to climb, and use the ▲/▼ buttons to raise/lower throttle at any time, in the air included.<br />
           Fly too slow and you'll stall — the nose drops and controls go mushy until you dive to regain speed. Fly too
           fast (especially diving) and you risk overspeed structural failure. Wind drifts you off course in the air, so
           correct your heading for it, especially on approach.<br />
@@ -74,7 +75,8 @@
     <div id="joystick-base">
       <div id="joystick-knob"></div>
     </div>
-    <button id="boost-btn" aria-label="Boost">▲</button>
+    <button id="boost-btn" aria-label="Throttle up">▲</button>
+    <button id="throttle-down-btn" aria-label="Throttle down">▼</button>
   </div>
   <script type="module" src="game.js"></script>
 </body>

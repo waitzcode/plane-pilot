@@ -311,6 +311,24 @@ html, body {
   -webkit-tap-highlight-color: transparent;
 }
 
+#throttle-down-btn {
+  position: absolute;
+  right: 1.1rem;
+  bottom: 5.3rem;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 240, 255, 0.5);
+  background: rgba(0, 240, 255, 0.15);
+  color: #00f0ff;
+  font-size: 1.2rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Only shown once flight actually starts (body.playing) -- they'd otherwise sit fixed at
    the bottom corners and overlap the ready-menu's destination/plane cards if that content
    is tall enough to scroll. */
@@ -318,7 +336,8 @@ html, body {
   body.playing #joystick-base {
     display: block;
   }
-  body.playing #boost-btn {
+  body.playing #boost-btn,
+  body.playing #throttle-down-btn {
     display: flex;
   }
 }
