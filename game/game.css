@@ -366,8 +366,12 @@ body.cockpit-view .hud-row-sub {
   body.playing #joystick-base {
     display: block;
   }
-  body.playing #boost-btn,
-  body.playing #throttle-down-btn {
-    display: flex;
-  }
+}
+
+/* The throttle buttons are always available once playing -- on any device, mouse click
+   included -- as a guaranteed-clickable fallback for throttle control, since they don't
+   depend on which keyboard keys are bound or whether the game currently has keyboard focus. */
+body.playing #boost-btn,
+body.playing #throttle-down-btn {
+  display: flex;
 }
