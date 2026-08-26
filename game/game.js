@@ -18,7 +18,7 @@ var altEl = document.getElementById("alt");
 var spdEl = document.getElementById("spd");
 var gearStatusEl = document.getElementById("gear-status");
 var flapsStatusEl = document.getElementById("flaps-status");
-var gearShiftEl = document.getElementById("gear-shift");
+var throttleStatusEl = document.getElementById("throttle-status");
 var overlay = document.getElementById("overlay");
 var loadingMsg = document.getElementById("loading-msg");
 var readyPanel = document.getElementById("ready-panel");
@@ -1067,29 +1067,18 @@ for (var i = 0; i < RING_COUNT; i++) {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
-var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Equal", "Minus"];
 var keys = {};
 // Gear/flaps are toggles, not held controls -- flipped once per physical press (e.repeat
 // guards against the OS's key-repeat re-firing keydown while held).
 var gearDown = true;
 var flapsDown = false;
-// Engine speed is a real-ish RPM value (idle to redline) that caps top speed -- it
-// auto-advances as a baseline (so mobile/no-keyboard play is never stuck at idle), but a
-// manual 1-5 press sets a target RPM the engine spools toward over time rather than
-// snapping instantly, the way a real throttle lever doesn't change engine speed the
-// instant you move it.
-var IDLE_RPM = 700;
-var MAX_RPM = 2700;
-var DIGIT_RPM = {
-  Digit1: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.2,
-  Digit2: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.4,
-  Digit3: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.6,
-  Digit4: IDLE_RPM + (MAX_RPM - IDLE_RPM) * 0.8,
-  Digit5: MAX_RPM,
-};
-var targetRPM = DIGIT_RPM.Digit1;
-var currentRPM = IDLE_RPM;
-var RPM_SPOOL_RATE = 1.1; // how fast the engine chases targetRPM -- lower = laggier
+// The throttle is a real percentage (0-100) you set directly, like an actual throttle
+// lever -- hold + / - to move it, and it stays right where you leave it (no auto-return).
+// Space/the boost button also push it toward 100 (the touch-friendly, no-fine-control
+// path); on the ground, the up/down throttle keys do the same for backward-compatible feel.
+var throttlePercent = 0;
+var THROTTLE_RATE = 65; // %/sec
 window.addEventListener("keydown", function (e) {
   keys[e.code] = true;
   if (GAME_KEYS.indexOf(e.code) !== -1) e.preventDefault();
@@ -1102,9 +1091,6 @@ window.addEventListener("keydown", function (e) {
     flapsDown = !flapsDown;
     flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
     showToast(flapsDown ? "Flaps down" : "Flaps up");
-  } else if (DIGIT_RPM[e.code]) {
-    targetRPM = DIGIT_RPM[e.code];
-    showToast("Target RPM: " + Math.round(targetRPM));
   }
 });
 window.addEventListener("keyup", function (e) {
@@ -1373,11 +1359,10 @@ function resetFlight() {
   grounded = true;
   gearDown = true;
   flapsDown = false;
-  targetRPM = DIGIT_RPM.Digit1;
-  currentRPM = IDLE_RPM;
+  throttlePercent = 0;
   gearStatusEl.textContent = "GEAR DOWN";
   flapsStatusEl.textContent = "FLAPS UP";
-  gearShiftEl.textContent = "RPM " + Math.round(currentRPM);
+  throttleStatusEl.textContent = "THROTTLE 0%";
   score = 0;
   scoreEl.textContent = "Score: 0";
   statusEl.textContent = "ON RUNWAY";
@@ -1445,27 +1430,29 @@ function updateFlight(dt) {
   var wantsBoost = boosting || !!keys["Space"];
   var vertSpeed = 0;
 
-  // Engine RPM caps top speed at (currentRPM/MAX_RPM) of boostSpeed. currentRPM spools
-  // toward targetRPM over time rather than snapping, so shifting feels like a real engine
-  // winding up/down. Auto-advances targetRPM once speed pins at the current cap so play
-  // never gets stuck at idle (mobile has no way to shift), but a manual 1-5 press sets a
-  // new target immediately -- the spool lag is what makes it not instant.
-  if (targetRPM < MAX_RPM && speed >= stats.boostSpeed * (currentRPM / MAX_RPM) * 0.95) {
-    targetRPM = Math.min(MAX_RPM, targetRPM + (MAX_RPM - IDLE_RPM) * 0.2);
+  // The throttle is a direct percentage (0-100), held wherever you leave it -- like an
+  // actual throttle lever, not a target something else chases. +/- move it in either
+  // state; Space/the boost button (and, on the ground only, the up/down throttle keys,
+  // kept for backward-compatible feel) push it toward full for the no-fine-control path.
+  var throttleAdjust = 0;
+  if (keys["Equal"]) throttleAdjust = 1;
+  if (keys["Minus"]) throttleAdjust = -1;
+  if (wantsBoost) throttleAdjust = 1;
+  if (grounded) {
+    if (throttlePitchInput > 0) throttleAdjust = 1;
+    else if (throttlePitchInput < 0) throttleAdjust = -1;
   }
-  currentRPM += (targetRPM - currentRPM) * Math.min(1, RPM_SPOOL_RATE * dt);
-  gearShiftEl.textContent = "RPM " + Math.round(currentRPM);
-  var gearCap = stats.boostSpeed * (currentRPM / MAX_RPM);
+  if (throttleAdjust !== 0) {
+    throttlePercent = Math.max(0, Math.min(100, throttlePercent + throttleAdjust * THROTTLE_RATE * dt));
+    throttleStatusEl.textContent = "THROTTLE " + Math.round(throttlePercent) + "%";
+  }
+  var speedCap = stats.boostSpeed * (throttlePercent / 100);
 
   if (grounded) {
-    // ground handling: steer, throttle up/down with the pitch keys, lift off past takeoff speed.
-    // The boost control (Space / boost button) also throttles up on the ground -- it's the
-    // one control every input scheme (keyboard, joystick, mobile boost button) shares, and the
-    // boost button's "up arrow" look makes it the natural thing to hold for takeoff on touch.
-    var throttleUp = throttlePitchInput > 0 || wantsBoost;
+    // ground handling: steer, throttle sets ground accel directly, lift off past takeoff speed.
     yaw += yawInput * (TURN_RATE_BASE * 0.5) * dt;
-    var accel = throttleUp ? stats.groundAccel : throttlePitchInput < 0 ? -stats.groundAccel * 1.4 : -4;
-    speed = Math.max(0, Math.min(gearCap, speed + accel * dt));
+    var accel = (stats.groundAccel + 4) * (throttlePercent / 100) - 4;
+    speed = Math.max(0, Math.min(speedCap, speed + accel * dt));
     pitch = 0;
     roll = 0;
 
@@ -1477,7 +1464,7 @@ function updateFlight(dt) {
 
     // Flaps shorten the takeoff roll, same as on a real plane.
     var effectiveTakeoffSpeed = flapsDown ? stats.takeoffSpeed * 0.8 : stats.takeoffSpeed;
-    if (speed >= effectiveTakeoffSpeed && throttleUp) {
+    if (speed >= effectiveTakeoffSpeed && throttlePercent > 40) {
       grounded = false;
       airborneElapsed = 0;
       pitch = 0.18;
@@ -1495,7 +1482,7 @@ function updateFlight(dt) {
     // remembering to retract them after takeoff (and the reason to extend them again
     // before landing is a deliberate trade, not free).
     var dragMult = (gearDown ? 0.8 : 1) * (flapsDown ? 0.65 : 1);
-    var targetSpeed = Math.min((wantsBoost ? stats.boostSpeed : stats.cruiseSpeed) * dragMult, gearCap);
+    var targetSpeed = speedCap * dragMult;
     speed += (targetSpeed - speed) * Math.min(1, dt * 2);
 
     plane.rotation.order = "YXZ";

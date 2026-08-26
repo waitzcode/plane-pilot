@@ -30,7 +30,7 @@
       <div class="hud-row hud-row-sub">
         <span id="gear-status">GEAR DOWN</span>
         <span id="flaps-status">FLAPS UP</span>
-        <span id="gear-shift">SHIFT 1/5</span>
+        <span id="throttle-status">THROTTLE 0%</span>
       </div>
     </div>
 
@@ -47,12 +47,9 @@
 
       <div id="ready-panel" style="display:none">
         <p id="overlay-msg">
-          On the runway: hold <kbd>&uarr;</kbd>/<kbd>W</kbd> or <kbd>Space</kbd> to throttle up, keep holding to lift off.<br />
-          Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd>, hold <kbd>Space</kbd> to boost in the air.<br />
-          <kbd>1</kbd>-<kbd>5</kbd> set a target engine RPM, which the engine spools toward over time (not instantly) —
-          your top speed is capped by current RPM, so you need it high enough to even reach takeoff speed. It advances on
-          its own if you don't touch it, but setting it yourself gets you there faster, and dialing it back down helps you
-          brake before landing.<br />
+          <kbd>+</kbd>/<kbd>-</kbd> set your throttle directly, like a real throttle lever — it holds wherever you leave it.
+          On the runway, <kbd>&uarr;</kbd>/<kbd>W</kbd> and <kbd>Space</kbd> also push it toward full; keep the throttle up until you lift off.<br />
+          Steer with <kbd>&larr;</kbd><kbd>&rarr;</kbd> / <kbd>A</kbd><kbd>D</kbd>, pitch with <kbd>&uarr;</kbd><kbd>&darr;</kbd> in the air, hold <kbd>Space</kbd> for a quick throttle-up.<br />
           <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
           <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
           On mobile: drag the joystick up or hold the ▲ button to throttle/take off.<br />
