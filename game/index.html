@@ -24,8 +24,13 @@
       </div>
       <div class="hud-row hud-row-sub">
         <span id="status">ON RUNWAY</span>
-        <span id="alt">ALT 0</span>
-        <span id="spd">SPD 0</span>
+        <span id="alt">ALT 0 FT</span>
+        <span id="spd">IAS 0 KT</span>
+      </div>
+      <div class="hud-row hud-row-sub">
+        <span id="hdg">HDG 000°</span>
+        <span id="vs">VS 0 FPM</span>
+        <span id="wind">WIND --</span>
       </div>
       <div class="hud-row hud-row-sub">
         <span id="gear-status">GEAR DOWN</span>
@@ -35,6 +40,7 @@
     </div>
 
     <div id="toast"></div>
+    <div id="stall-warning">STALL</div>
     <div id="flash"></div>
 
     <div id="minimap-wrap">
@@ -53,6 +59,9 @@
           <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
           <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
           On mobile: drag the joystick up or hold the ▲ button to throttle/take off.<br />
+          Fly too slow and you'll stall — the nose drops and controls go mushy until you dive to regain speed. Fly too
+          fast (especially diving) and you risk overspeed structural failure. Wind drifts you off course in the air, so
+          correct your heading for it, especially on approach.<br />
           Fly through the rings for points. You can land anywhere over land, not just the runway!
         </p>
         <div id="destination-select"></div>

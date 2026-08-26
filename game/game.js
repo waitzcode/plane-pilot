@@ -16,6 +16,10 @@ var bestEl = document.getElementById("best");
 var statusEl = document.getElementById("status");
 var altEl = document.getElementById("alt");
 var spdEl = document.getElementById("spd");
+var hdgEl = document.getElementById("hdg");
+var vsEl = document.getElementById("vs");
+var windEl = document.getElementById("wind");
+var stallWarningEl = document.getElementById("stall-warning");
 var gearStatusEl = document.getElementById("gear-status");
 var flapsStatusEl = document.getElementById("flaps-status");
 var throttleStatusEl = document.getElementById("throttle-status");
@@ -109,6 +113,8 @@ var CACHE_PREFIX = "sky-runner-3d-osm-cache-v3-";
 var EARTH_R = 6371000;
 var CEILING_Y = 340;
 var GROUND_MIN_Y = 3;
+var MPS_TO_KNOTS = 1.9438;
+var M_TO_FEET = 3.28084;
 var LAND_MARGIN = 60; // how far past a city's worldHalf still counts as "land" for landing
 
 CITIES.forEach(function (city) {
@@ -1161,6 +1167,24 @@ var LANDING_MAX_TILT = 0.35;
 var stats; // active plane's tuning, set on start
 var airborneElapsed = 0; // guards against rapidly re-triggering the landing bonus by skipping/bouncing
 
+// Wind — a fresh random direction/speed each flight, like real METAR conditions at
+// takeoff. Reported (and blows from) the compass direction it's reported from, same
+// convention as a real ATIS/METAR; drifts the plane sideways while airborne only (ground
+// taxi stays predictable) and adds a little turbulence jitter scaled by its strength.
+var windFromDeg = 0;
+var windKts = 0;
+var windPushX = 0, windPushZ = 0;
+function rollWind() {
+  windFromDeg = Math.floor(Math.random() * 360);
+  windKts = Math.round(Math.random() * 15);
+  var pushDeg = (windFromDeg + 180) % 360;
+  var pushRad = (pushDeg * Math.PI) / 180;
+  var pushMps = windKts / MPS_TO_KNOTS;
+  windPushX = Math.sin(pushRad) * pushMps;
+  windPushZ = -Math.cos(pushRad) * pushMps;
+  windEl.textContent = "WIND " + String(windFromDeg).padStart(3, "0") + "°/" + windKts + "KT";
+}
+
 // ---------------------------------------------------------------------------
 // Crash effects — fire burst, smoke, flying debris, screen flash + camera shake.
 // ---------------------------------------------------------------------------
@@ -1372,6 +1396,8 @@ function resetFlight() {
   clearCrashEffects();
   crashCamTimer = 0;
   shakeTimer = 0;
+  rollWind();
+  stallWarningEl.classList.remove("show");
 }
 
 var forwardVec = new THREE.Vector3();
@@ -1449,6 +1475,7 @@ function updateFlight(dt) {
   var speedCap = stats.boostSpeed * (throttlePercent / 100);
 
   if (grounded) {
+    stallWarningEl.classList.remove("show"); // stall only applies airborne
     // ground handling: steer, throttle sets ground accel directly, lift off past takeoff speed.
     yaw += yawInput * (TURN_RATE_BASE * 0.5) * dt;
     var accel = (stats.groundAccel + 4) * (throttlePercent / 100) - 4;
@@ -1473,23 +1500,49 @@ function updateFlight(dt) {
     }
   } else {
     airborneElapsed += dt;
-    yaw += yawInput * stats.turnRate * dt;
-    pitch += throttlePitchInput * stats.pitchRate * dt;
+
+    // Stall: below this speed there isn't enough lift, so the nose drops on its own and
+    // your controls go mushy -- flaps lower the stall speed, same as on a real plane. The
+    // only way out is what a real pilot does too: pitch down and dive to regain airspeed.
+    var stallSpeed = stats.takeoffSpeed * (flapsDown ? 0.45 : 0.6);
+    var stalling = speed < stallSpeed;
+    var controlAuth = stalling ? 0.2 : 1;
+    stallWarningEl.classList.toggle("show", stalling);
+
+    yaw += yawInput * stats.turnRate * controlAuth * dt;
+    pitch += throttlePitchInput * stats.pitchRate * controlAuth * dt;
+    if (stalling) pitch -= 1.1 * dt; // the forced nose-drop of an actual stall break
     pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
     roll += (yawInput * -0.7 - roll) * 4 * dt;
+    // Light turbulence jitter, scaled by wind strength.
+    if (windKts > 0) {
+      roll += (Math.random() - 0.5) * windKts * 0.008;
+      pitch += (Math.random() - 0.5) * windKts * 0.004;
+    }
 
     // Flying with the gear and/or flaps out costs real speed -- the payoff for
     // remembering to retract them after takeoff (and the reason to extend them again
-    // before landing is a deliberate trade, not free).
+    // before landing is a deliberate trade, not free). Diving adds real airspeed too,
+    // same as gravity assisting a real plane -- which is what makes overspeed reachable.
     var dragMult = (gearDown ? 0.8 : 1) * (flapsDown ? 0.65 : 1);
-    var targetSpeed = speedCap * dragMult;
+    var diveBonus = pitch < 0 ? -pitch * 55 : 0;
+    var targetSpeed = speedCap * dragMult + diveBonus;
     speed += (targetSpeed - speed) * Math.min(1, dt * 2);
 
     plane.rotation.order = "YXZ";
     plane.rotation.set(pitch, yaw, roll);
     forwardVec.set(0, 0, -1).applyEuler(plane.rotation);
     plane.position.addScaledVector(forwardVec, speed * dt);
+    plane.position.x += windPushX * dt;
+    plane.position.z += windPushZ * dt;
     vertSpeed = forwardVec.y * speed;
+
+    // Overspeed: past this, aerodynamic stress is enough to break the airframe -- a real
+    // risk when diving hard at high throttle, not something that happens by just cruising.
+    var neverExceedSpeed = stats.boostSpeed * 1.15;
+    if (speed > neverExceedSpeed) {
+      return crash("Overspeed! Structural failure!");
+    }
 
     if (plane.position.y > CEILING_Y) plane.position.y = CEILING_Y;
 
@@ -1558,8 +1611,11 @@ function updateFlight(dt) {
     }
   }
 
-  altEl.textContent = "ALT " + Math.round(plane.position.y);
-  spdEl.textContent = "SPD " + Math.round(speed);
+  altEl.textContent = "ALT " + Math.round(plane.position.y * M_TO_FEET) + " FT";
+  spdEl.textContent = "IAS " + Math.round(speed * MPS_TO_KNOTS) + " KT";
+  var headingDeg = (((-yaw * 180) / Math.PI) % 360 + 360) % 360;
+  hdgEl.textContent = "HDG " + String(Math.round(headingDeg)).padStart(3, "0") + "°";
+  vsEl.textContent = "VS " + (vertSpeed >= 0 ? "+" : "") + Math.round(vertSpeed * M_TO_FEET * 60) + " FPM";
 
   var behind = forwardVec.clone().multiplyScalar(-18);
   var desiredCamPos = plane.position.clone().add(behind).add(new THREE.Vector3(0, 6, 0));
@@ -1572,6 +1628,7 @@ function updateFlight(dt) {
 function crash(reason) {
   state = "over";
   document.body.classList.remove("playing");
+  stallWarningEl.classList.remove("show");
   triggerCrashEffect(plane.position);
   plane.visible = false;
   if (score > best) {
