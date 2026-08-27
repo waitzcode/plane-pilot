@@ -37,8 +37,10 @@ var minimapCanvas = document.getElementById("minimap");
 var minimapCtx = minimapCanvas.getContext("2d");
 var panelCanvas = document.getElementById("instrument-panel");
 var panelCtx = panelCanvas.getContext("2d");
-var joystickBase = document.getElementById("joystick-base");
-var joystickKnob = document.getElementById("joystick-knob");
+var dpadUp = document.getElementById("dpad-up");
+var dpadDown = document.getElementById("dpad-down");
+var dpadLeft = document.getElementById("dpad-left");
+var dpadRight = document.getElementById("dpad-right");
 var boostBtn = document.getElementById("boost-btn");
 var throttleDownBtn = document.getElementById("throttle-down-btn");
 
@@ -1114,43 +1116,27 @@ window.addEventListener("keyup", function (e) {
   keys[e.code] = false;
 });
 
-var joystickActive = false;
-var joystickVec = { x: 0, y: 0 };
-var joystickId = null;
-var JOY_MAX = 42;
-
-function joyStart(e) {
-  joystickActive = true;
-  joystickId = e.pointerId;
-  joystickBase.setPointerCapture(e.pointerId);
+// Touch D-pad: each button just holds down the same virtual key an arrow key would, so
+// it drives the exact same kbYaw/kbPitch logic as a real keyboard -- no separate input
+// path to keep in sync.
+function bindDpadBtn(btn, code) {
+  btn.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    keys[code] = true;
+    btn.classList.add("pressed");
+  });
+  function release() {
+    keys[code] = false;
+    btn.classList.remove("pressed");
+  }
+  btn.addEventListener("pointerup", release);
+  btn.addEventListener("pointercancel", release);
+  btn.addEventListener("pointerleave", release);
 }
-function joyMove(e) {
-  if (!joystickActive || e.pointerId !== joystickId) return;
-  var rect = joystickBase.getBoundingClientRect();
-  var cx = rect.left + rect.width / 2;
-  var cy = rect.top + rect.height / 2;
-  var dx = e.clientX - cx;
-  var dy = e.clientY - cy;
-  var dist = Math.min(JOY_MAX, Math.hypot(dx, dy));
-  var angle = Math.atan2(dy, dx);
-  dx = Math.cos(angle) * dist;
-  dy = Math.sin(angle) * dist;
-  joystickKnob.style.transform = "translate(" + dx + "px," + dy + "px)";
-  joystickVec.x = dx / JOY_MAX;
-  joystickVec.y = dy / JOY_MAX;
-}
-function joyEnd(e) {
-  if (e.pointerId !== joystickId) return;
-  joystickActive = false;
-  joystickId = null;
-  joystickVec.x = 0;
-  joystickVec.y = 0;
-  joystickKnob.style.transform = "translate(0,0)";
-}
-joystickBase.addEventListener("pointerdown", joyStart);
-joystickBase.addEventListener("pointermove", joyMove);
-joystickBase.addEventListener("pointerup", joyEnd);
-joystickBase.addEventListener("pointercancel", joyEnd);
+bindDpadBtn(dpadUp, "ArrowUp");
+bindDpadBtn(dpadDown, "ArrowDown");
+bindDpadBtn(dpadLeft, "ArrowLeft");
+bindDpadBtn(dpadRight, "ArrowRight");
 
 var boosting = false;
 boostBtn.addEventListener("pointerdown", function (e) {
@@ -1189,24 +1175,6 @@ window.addEventListener(
   },
   { passive: false }
 );
-
-// Mouse (or trackpad) steering: the cursor's offset from the center of the screen acts
-// like a virtual joystick, no click-and-hold needed. Works identically for a mouse or a
-// trackpad, and needs no keyboard binding at all -- a reliable steering path regardless
-// of input device.
-var mouseSteerVec = { x: 0, y: 0 };
-window.addEventListener("mousemove", function (e) {
-  if (state !== "playing") return;
-  var w = window.innerWidth, h = window.innerHeight;
-  mouseSteerVec.x = Math.max(-1, Math.min(1, (e.clientX - w / 2) / (w / 2)));
-  mouseSteerVec.y = Math.max(-1, Math.min(1, (e.clientY - h / 2) / (h / 2)));
-});
-function resetMouseSteer() {
-  mouseSteerVec.x = 0;
-  mouseSteerVec.y = 0;
-}
-window.addEventListener("mouseleave", resetMouseSteer);
-window.addEventListener("blur", resetMouseSteer);
 
 // ---------------------------------------------------------------------------
 // Flight state + physics
@@ -1506,8 +1474,8 @@ function isCollidingWithBuilding(x, y, z) {
 function updateFlight(dt) {
   var kbYaw = (keys["ArrowLeft"] || keys["KeyA"] ? 1 : 0) - (keys["ArrowRight"] || keys["KeyD"] ? 1 : 0);
   var kbPitch = (keys["ArrowUp"] || keys["KeyW"] ? 1 : 0) - (keys["ArrowDown"] || keys["KeyS"] ? 1 : 0);
-  var yawInput = Math.max(-1, Math.min(1, kbYaw + -joystickVec.x + -mouseSteerVec.x));
-  var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch + -joystickVec.y + -mouseSteerVec.y));
+  var yawInput = Math.max(-1, Math.min(1, kbYaw));
+  var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch));
   var wantsBoost = boosting || !!keys["Space"];
   vertSpeed = 0;
 
