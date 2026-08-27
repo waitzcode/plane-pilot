@@ -1079,7 +1079,7 @@ for (var i = 0; i < RING_COUNT; i++) {
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
-var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Equal", "Minus", "PageUp", "PageDown"];
+var GAME_KEYS = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Equal", "Minus", "PageUp", "PageDown", "NumpadAdd", "NumpadSubtract"];
 var keys = {};
 // Gear/flaps are toggles, not held controls -- flipped once per physical press (e.repeat
 // guards against the OS's key-repeat re-firing keydown while held).
@@ -1175,6 +1175,20 @@ throttleDownBtn.addEventListener("pointerup", function () {
 throttleDownBtn.addEventListener("pointercancel", function () {
   throttlingDown = false;
 });
+
+// Scroll wheel also adjusts throttle -- it doesn't depend on remembering any specific
+// key, so it's a good fallback if a keyboard binding isn't reaching the game for
+// whatever reason (focus, layout, an unbound physical key, etc).
+window.addEventListener(
+  "wheel",
+  function (e) {
+    if (state !== "playing") return;
+    e.preventDefault();
+    throttlePercent = Math.max(0, Math.min(100, throttlePercent - e.deltaY * 0.05));
+    throttleStatusEl.textContent = "THROTTLE " + Math.round(throttlePercent) + "%";
+  },
+  { passive: false }
+);
 
 // ---------------------------------------------------------------------------
 // Flight state + physics
@@ -1484,8 +1498,8 @@ function updateFlight(dt) {
   // state; Space/the boost button (and, on the ground only, the up/down throttle keys,
   // kept for backward-compatible feel) push it toward full for the no-fine-control path.
   var throttleAdjust = 0;
-  if (keys["Equal"] || keys["PageUp"]) throttleAdjust = 1;
-  if (keys["Minus"] || keys["PageDown"]) throttleAdjust = -1;
+  if (keys["Equal"] || keys["PageUp"] || keys["NumpadAdd"]) throttleAdjust = 1;
+  if (keys["Minus"] || keys["PageDown"] || keys["NumpadSubtract"]) throttleAdjust = -1;
   if (wantsBoost) throttleAdjust = 1;
   if (throttlingDown) throttleAdjust = -1;
   if (grounded) {
