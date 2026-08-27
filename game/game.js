@@ -1190,6 +1190,24 @@ window.addEventListener(
   { passive: false }
 );
 
+// Mouse (or trackpad) steering: the cursor's offset from the center of the screen acts
+// like a virtual joystick, no click-and-hold needed. Works identically for a mouse or a
+// trackpad, and needs no keyboard binding at all -- a reliable steering path regardless
+// of input device.
+var mouseSteerVec = { x: 0, y: 0 };
+window.addEventListener("mousemove", function (e) {
+  if (state !== "playing") return;
+  var w = window.innerWidth, h = window.innerHeight;
+  mouseSteerVec.x = Math.max(-1, Math.min(1, (e.clientX - w / 2) / (w / 2)));
+  mouseSteerVec.y = Math.max(-1, Math.min(1, (e.clientY - h / 2) / (h / 2)));
+});
+function resetMouseSteer() {
+  mouseSteerVec.x = 0;
+  mouseSteerVec.y = 0;
+}
+window.addEventListener("mouseleave", resetMouseSteer);
+window.addEventListener("blur", resetMouseSteer);
+
 // ---------------------------------------------------------------------------
 // Flight state + physics
 // ---------------------------------------------------------------------------
@@ -1488,8 +1506,8 @@ function isCollidingWithBuilding(x, y, z) {
 function updateFlight(dt) {
   var kbYaw = (keys["ArrowLeft"] || keys["KeyA"] ? 1 : 0) - (keys["ArrowRight"] || keys["KeyD"] ? 1 : 0);
   var kbPitch = (keys["ArrowUp"] || keys["KeyW"] ? 1 : 0) - (keys["ArrowDown"] || keys["KeyS"] ? 1 : 0);
-  var yawInput = Math.max(-1, Math.min(1, kbYaw + -joystickVec.x));
-  var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch + -joystickVec.y));
+  var yawInput = Math.max(-1, Math.min(1, kbYaw + -joystickVec.x + -mouseSteerVec.x));
+  var throttlePitchInput = Math.max(-1, Math.min(1, kbPitch + -joystickVec.y + -mouseSteerVec.y));
   var wantsBoost = boosting || !!keys["Space"];
   vertSpeed = 0;
 
