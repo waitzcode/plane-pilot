@@ -51,6 +51,21 @@
       <canvas id="instrument-panel" width="900" height="220"></canvas>
     </div>
 
+    <div id="loading-screen">
+      <div class="ls-sky">
+        <span class="ls-cloud ls-cloud-1"></span>
+        <span class="ls-cloud ls-cloud-2"></span>
+        <span class="ls-cloud ls-cloud-3"></span>
+        <div class="ls-plane" aria-hidden="true">✈</div>
+      </div>
+      <h1 class="ls-title">SKY RUNNER 3D</h1>
+      <div class="ls-bar" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="ls-bar-fill"></div>
+      </div>
+      <p id="ls-status">Preparing for takeoff&hellip;</p>
+      <p id="ls-tip"></p>
+    </div>
+
     <div id="overlay">
       <h1>SKY RUNNER 3D</h1>
       <p id="loading-msg">Loading real NYC map data&hellip;</p>
@@ -65,7 +80,7 @@
           devices, use the arrow-button pad in the bottom-left instead.<br />
           <kbd>H</kbd> toggles landing gear, <kbd>G</kbd> toggles flaps (keyboard only) — both cost you speed while extended, but you
           <b>must</b> lower the gear before touching down or you'll crash, and flaps make for a safer, more forgiving landing speed.<br />
-          <kbd>C</kbd> switches between chase camera and the cockpit view, which swaps the text readouts for a real instrument
+          <kbd>C</kbd> (or the 👁 First person button, top-right) switches between chase camera and the first-person cockpit view, which swaps the text readouts for a real instrument
           panel — attitude indicator, airspeed, altimeter, heading, and vertical speed.<br />
           On mobile: hold the arrow-pad's &uarr; to climb, and use the ▲/▼ buttons to raise/lower throttle at any time, in the air included.<br />
           Fly too slow and you'll stall — the nose drops and controls go mushy until you dive to regain speed. Fly too
@@ -86,6 +101,7 @@
       <button id="dpad-right" class="dpad-btn dpad-right" aria-label="Turn right">&rarr;</button>
       <button id="dpad-down" class="dpad-btn dpad-down" aria-label="Pitch down">&darr;</button>
     </div>
+    <button id="camera-btn" aria-label="Switch camera view">👁 First person</button>
     <button id="boost-btn" aria-label="Throttle up">▲</button>
     <button id="throttle-down-btn" aria-label="Throttle down">▼</button>
   </div>

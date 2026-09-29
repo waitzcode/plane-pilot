@@ -43,6 +43,12 @@ var dpadLeft = document.getElementById("dpad-left");
 var dpadRight = document.getElementById("dpad-right");
 var boostBtn = document.getElementById("boost-btn");
 var throttleDownBtn = document.getElementById("throttle-down-btn");
+var cameraBtn = document.getElementById("camera-btn");
+var loadingScreen = document.getElementById("loading-screen");
+var lsBar = loadingScreen.querySelector(".ls-bar");
+var lsBarFill = document.getElementById("ls-bar-fill");
+var lsStatus = document.getElementById("ls-status");
+var lsTip = document.getElementById("ls-tip");
 
 var STORAGE_KEY = "sky-runner-3d-best";
 var best = Number(localStorage.getItem(STORAGE_KEY)) || 0;
@@ -595,6 +601,41 @@ function loadCity(city) {
     });
 }
 
+// Loading screen -- covers everything until every city is built, with a progress bar
+// that fills one step per city and a rotating flying tip to read while it waits.
+var LOADING_TIPS = [
+  "Lower your landing gear (H) before touching down, or it's a crash.",
+  "Flaps (G) let you land slower and safer.",
+  "Too slow and you'll stall: dive a little to get your speed back.",
+  "Press C, or tap the First person button, to fly from the cockpit.",
+  "Wind pushes you off course. Correct your heading on approach.",
+  "You can land anywhere over land, not just on a runway.",
+  "Fly through the rings for points.",
+  "The throttle stays wherever you leave it. Scroll to adjust it quickly.",
+];
+var tipIndex = Math.floor(Math.random() * LOADING_TIPS.length);
+function showNextTip() {
+  lsTip.textContent = "TIP: " + LOADING_TIPS[tipIndex % LOADING_TIPS.length];
+  tipIndex++;
+}
+showNextTip();
+var tipTimer = setInterval(showNextTip, 3500);
+
+function setLoadingProgress(fraction, text) {
+  var pct = Math.round(fraction * 100);
+  lsBarFill.style.width = pct + "%";
+  lsBar.setAttribute("aria-valuenow", String(pct));
+  lsStatus.textContent = text;
+}
+
+function hideLoadingScreen() {
+  clearInterval(tipTimer);
+  loadingScreen.classList.add("done");
+  setTimeout(function () {
+    loadingScreen.style.display = "none";
+  }, 700);
+}
+
 var worldReady = false;
 function loadAllCities() {
   var i = 0;
@@ -605,11 +646,15 @@ function loadAllCities() {
       loadingMsg.style.display = "none";
       readyPanel.style.display = "flex";
       resetFlight();
+      setLoadingProgress(1, "Cleared for takeoff!");
+      setTimeout(hideLoadingScreen, 400);
       return;
     }
     var city = CITIES[i];
     destLoadingEl.textContent = "Loading " + city.name + " map data… (" + (i + 1) + "/" + CITIES.length + ")";
     loadingMsg.textContent = destLoadingEl.textContent;
+    // a small head start on each step so the bar visibly moves as soon as a city begins
+    setLoadingProgress((i + 0.15) / CITIES.length, "Loading " + city.name + "… (" + (i + 1) + "/" + CITIES.length + ")");
     i++;
     loadCity(city).then(next);
   }
@@ -1107,10 +1152,23 @@ window.addEventListener("keydown", function (e) {
     flapsStatusEl.textContent = flapsDown ? "FLAPS DOWN" : "FLAPS UP";
     showToast(flapsDown ? "Flaps down" : "Flaps up");
   } else if (e.code === "KeyC") {
-    cameraMode = cameraMode === "chase" ? "cockpit" : "chase";
-    document.body.classList.toggle("cockpit-view", cameraMode === "cockpit");
-    showToast(cameraMode === "cockpit" ? "Cockpit view" : "Chase camera");
+    toggleCamera();
   }
+});
+
+// C key and the on-screen camera button both land here. The button's label names the
+// view you'd switch *to*, so it always reads as an action.
+function toggleCamera() {
+  cameraMode = cameraMode === "chase" ? "cockpit" : "chase";
+  document.body.classList.toggle("cockpit-view", cameraMode === "cockpit");
+  cameraBtn.textContent = cameraMode === "cockpit" ? "🎥 Chase view" : "👁 First person";
+  showToast(cameraMode === "cockpit" ? "First person view" : "Chase camera");
+}
+// pointerdown + preventDefault (rather than click) keeps the button from taking keyboard
+// focus -- otherwise a later Space press would "click" it and flip the camera mid-flight.
+cameraBtn.addEventListener("pointerdown", function (e) {
+  e.preventDefault();
+  if (state === "playing") toggleCamera();
 });
 window.addEventListener("keyup", function (e) {
   keys[e.code] = false;
