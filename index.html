@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sky Runner — Browser Arcade Game</title>
-  <meta name="description" content="Sky Runner: a fast, free browser-based plane arcade game. Play instantly, no download." />
+  <meta name="description" content="Sky Runner: a free 3D flying game in your browser. Fly real planes between New York, Tokyo, Los Angeles and Paris. No download." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
@@ -40,28 +40,49 @@
 
     <section id="how-to-play" class="info-section">
       <h2>How to Play</h2>
-      <!-- Placeholder — replace with your own instructions/art whenever you're ready. -->
-      <p class="placeholder">
-        Pick a starting city and a plane, then throttle up on the runway with <kbd>&uarr;</kbd> / <kbd>W</kbd> until you lift off.
-        Steer with <kbd>&larr;</kbd> <kbd>&rarr;</kbd> / <kbd>A</kbd> <kbd>D</kbd>, pitch with
-        <kbd>&uarr;</kbd> <kbd>&darr;</kbd> / <kbd>W</kbd> <kbd>S</kbd>, and hold <kbd>Space</kbd> to boost.
-        <kbd>H</kbd> toggles the landing gear and <kbd>G</kbd> toggles flaps — flying with either out costs speed, but you
-        must put the gear back down before you land or it's a crash, and flaps buy you a safer landing speed margin.
-        On mobile, use the on-screen joystick and boost button (gear/flaps are keyboard-only for now).
-        All four cities share one world, so you can fly clear across the open ocean from one to another in a single flight.
-        Fly through the glowing rings for points — you can land anywhere over land, not just the runway, as long as
-        you come in slow, level, and with your gear down. Clip a building, come in too hot, land with the gear up,
-        or splash down in the ocean and it's game over.
-        <em>(Edit this section in index.html to add more detail, screenshots, or tips.)</em>
-      </p>
+      <p>Pick a starting city and a plane, set your throttle, and take off down the runway. Fly through the rings for points, then land anywhere over land. Come in slow and level, with your gear down.</p>
+
+      <h3>Controls</h3>
+      <table class="controls">
+        <tbody>
+          <tr><th>Steer</th><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>A</kbd> <kbd>D</kbd></td></tr>
+          <tr><th>Pitch</th><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd> or <kbd>W</kbd> <kbd>S</kbd> (on the runway these also set throttle)</td></tr>
+          <tr><th>Throttle</th><td><kbd>Page&uarr;</kbd> <kbd>Page&darr;</kbd>, <kbd>+</kbd> <kbd>-</kbd>, numpad <kbd>+</kbd> <kbd>-</kbd>, the scroll wheel, or the on-screen ▲ ▼ buttons. It stays where you leave it.</td></tr>
+          <tr><th>Full throttle</th><td><kbd>Space</kbd> pushes the throttle quickly toward 100%</td></tr>
+          <tr><th>Landing gear</th><td><kbd>H</kbd></td></tr>
+          <tr><th>Flaps</th><td><kbd>G</kbd></td></tr>
+          <tr><th>Camera</th><td><kbd>C</kbd> switches between the chase view and the cockpit view</td></tr>
+        </tbody>
+      </table>
+      <p class="note">On phones and tablets, use the arrow pad in the bottom-left to steer and the ▲ ▼ buttons for throttle. Gear, flaps and the camera are keyboard-only for now.</p>
+
+      <h3>Flying tips</h3>
+      <ul>
+        <li><strong>Watch your speed.</strong> Fly too slowly and you'll stall: the nose drops and the controls go soft until you dive to pick up speed. Fly too fast, especially in a dive, and the airframe can fail.</li>
+        <li><strong>Correct for wind.</strong> Wind pushes you off course once you're airborne. Allow for it when you line up to land.</li>
+        <li><strong>Gear and flaps.</strong> Both slow you down while they're out. Lower the gear before touchdown or you'll crash. Flaps give you a safer, slower landing speed.</li>
+        <li><strong>Use the cockpit view.</strong> It replaces the text readouts with a working instrument panel: attitude indicator, airspeed, altimeter, heading and vertical speed.</li>
+        <li><strong>Things that end your flight:</strong> hitting a building, landing too fast, landing with the gear up, or going down in the ocean.</li>
+      </ul>
     </section>
 
     <section id="about" class="info-section">
       <h2>About</h2>
-      <!-- Placeholder — replace with your own about text. -->
-      <p class="placeholder">
-        <em>This is a placeholder About section. Add your story, credits, or dev notes here.</em>
-      </p>
+      <p>Sky Runner is a free 3D flying game that runs in your browser. There's nothing to download and no account to make.</p>
+
+      <h3>Five real aircraft</h3>
+      <ul>
+        <li><strong>Cessna 172</strong>: a light trainer, slow and forgiving</li>
+        <li><strong>Boeing 737</strong>: a short- to medium-haul airliner</li>
+        <li><strong>Boeing 747</strong>: the jumbo jet, heavy and long-range</li>
+        <li><strong>F-15 Eagle</strong>: a twin-engine air-superiority fighter</li>
+        <li><strong>F-16 Fighting Falcon</strong>: a nimble single-engine fighter</li>
+      </ul>
+
+      <h3>Four real cities, one world</h3>
+      <p>New York, Tokyo (Haneda), Los Angeles (LAX) and Paris share one continuous map. You can take off in one city and fly across the ocean to another in a single flight. The minimap shows where you are.</p>
+
+      <p class="note">Built with plain HTML, CSS and JavaScript, plus <a href="https://threejs.org/">three.js</a> for the 3D graphics.</p>
     </section>
   </main>
 

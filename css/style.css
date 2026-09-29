@@ -168,8 +168,58 @@ a {
   margin-bottom: 1rem;
 }
 
-.placeholder {
+.info-section h3 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin: 1.75rem 0 0.6rem;
+}
+
+.info-section ul {
+  padding-left: 1.2rem;
+}
+
+.info-section li {
+  margin-bottom: 0.5rem;
+}
+
+.note {
   color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.controls {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.controls th,
+.controls td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.controls th {
+  width: 9rem;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .controls th,
+  .controls td {
+    display: block;
+    width: auto;
+    padding: 0.2rem 0;
+    border: 0;
+  }
+  .controls tr {
+    display: block;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
 kbd {
